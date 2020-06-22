@@ -17,7 +17,7 @@ On the client:
 * Assume the server used is wehe3.meddle.mobi (can use your own server as well, just edit ```class Instance``` in python_lib.py). You can then run a replay of the recorded traffic
 
 ```bash
-python3 replay_client.py --pcap_folder=the/dir/to/replayFiles --serverInstance=wehe
+python3 replay_client.py --pcap_folder={the/dir/to/replayFiles} --serverInstance=wehe
 ```
 
 ## Containerization
@@ -29,7 +29,7 @@ docker build . -t wehe
 
 Then run with 
 ```bash
-docker run -v /data:/data --net=host -itd wehe
+docker run -v /data:/data --net=host -itd wehe {the public IP address/ hostname}
 ```
 
 /data is where the results are saved
@@ -52,13 +52,13 @@ On the client:
 * Create the replay file with original payload
 
 ```bash
-sudo python3 replay_parser.py --pcap_folder=the/dir/to/pcap
+sudo python3 replay_parser.py --pcap_folder={the/dir/to/pcap}
 ```
 
 * Creat the replay file with bit-inverted payload
 
 ```bash
-sudo python3 replay_parser.py --pcap_folder=the/dir/to/pcapRandom --randomPayload=True --invertBit=True
+sudo python3 replay_parser.py --pcap_folder={the/dir/to/pcapRandom} --randomPayload=True --invertBit=True
 ```
 
 * Copy the pickle directory (the/dir/to/pcap, and the/dir/to/pcapRandom) to the server via scp
