@@ -29,7 +29,7 @@ docker build . -t wehe
 
 Then run with 
 ```bash
-docker run -v /data:/data --net=host -itd wehe {the public IP address/ hostname}
+docker run -v /data:/data --net=host --env SUDO_UID=$UID -itd wehe {the public IP address/ hostname}
 ```
 
 /data is where the results are saved

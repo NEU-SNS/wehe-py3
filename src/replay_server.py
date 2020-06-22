@@ -462,9 +462,13 @@ class TCPServer(object):
                     gevent.sleep(seconds=((time_origin + response.timestamp) - time.time()))
                 try:
                     # response.payload.replace('video', 'walio')
-                    connection.sendall(bytes.fromhex(response.payload))
+                    # truncate response.payload if not multiple of 4
+                    # something went wrong when parsing the replay
+                    response_len = len(response.payload)
+                    send_len = response_len - (response_len % 4)
+                    connection.sendall(bytes.fromhex(response.payload[:send_len]))
                 except Exception as e:
-                    print("Error when seding data", e)
+                    print("Error when sending data", e)
                     return False
                 pCount += 1
 
