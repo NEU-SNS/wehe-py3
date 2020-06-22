@@ -1,0 +1,18 @@
+Generating a root certificate and keys:
+
+`openssl genrsa -des3 -out ca.key 4096`
+
+remove -des3 if you don't need a password though i would not recommend this
+
+`openssl req -x509 -new -nodes -key ca.key -sha256 -days 1024 -out ca.crt`
+
+iOS needs a cert in the .der format and a pkcs12 file
+
+`openssl x509 -in ca.crt -outform DER -out ca.der` 
+
+`openssl pkcs12 -export -out ca.pfx -inkey ca.key -in ca.crt`
+Note that the export password you set here should NOT be the same as your root key password
+The export password will be used in the app along the pfx file
+Do not include the root key password in the source code
+
+Distribute the .crt and .key files to each server and use the certGenerator script to generate and renew server specific certs
