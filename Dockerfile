@@ -24,4 +24,4 @@ ADD src /wehe
 ADD replayTraces /replayTraces
 WORKDIR /wehe
 # You must provide a local hostname argument when you start this image.
-ENTRYPOINT ["/bin/sh", "./startserver.sh"]
+ENTRYPOINT ["/bin/bash", "./startserver.sh"]
