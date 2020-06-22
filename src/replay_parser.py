@@ -64,6 +64,7 @@ DEBUG = 2
 # ipIgnoreList = ['17.0.0.0/8']  # Apple ip range --> see it a lot when recording on iPhone/iPad
 ipIgnoreList = []
 
+
 def getUDPstreamsMap(pcap_file, client_ip):
     command = 'tshark -r ' + pcap_file + ' -2 -R "udp" -T fields -e ip.src -e udp.srcport -e ip.dst -e udp.dstport > tmp'
     os.system(command)
@@ -320,12 +321,15 @@ def bitInv(hexPayload):
         else:
             newb += '0'
     hex_newpayload = hex(int(newb, 2))[2:]
-    for i in range(0, int(len(newb)/4)):
-        if newb[i*4:(i+1)*4] == "0000":
+    for i in range(0, int(len(newb) / 4)):
+        if newb[i * 4:(i + 1) * 4] == "0000":
             hex_newpayload = "0" + hex_newpayload
         else:
             break
-    return hex_newpayload
+    hex_newpayload_len = len(hex_newpayload)
+    hex_newpayload_len_limit = hex_newpayload_len - (hex_newpayload_len % 4)
+
+    return hex_newpayload[: hex_newpayload_len_limit]
 
 
 def bitInvNonHex(payload):
@@ -355,6 +359,9 @@ def str_to_hex(payload_str):
         elif len(c_hex) == 2:
             c_hex = "00"
         payload_hex += c_hex
+
+    payload_hex_len = len(payload_hex) - (len(payload_hex) % 4)
+    payload_hex = payload_hex[: payload_hex_len]
 
     return payload_hex
 
@@ -571,7 +578,7 @@ def readNextPacket(streamMeta, streamHandle, randomPayload=False):
 
         if randomPayload is True:
             before_payload = p.payload
-            p.payload = random_hex_by_payload(p.payload)
+            p.payload = random_hex_by_payload(before_payload)
             # if len(before_payload) != len(p.payload):
             #     print("before, after", len(before_payload), len(p.payload), before_payload[:12], p.payload[:12])
 
@@ -929,9 +936,10 @@ def run(*args):
         udpServers[serverIP] = list(udpServers[serverIP])
 
     PRINT_ACTION('Serializing all', 1, action=False)
-    pickle.dump(streamSkippedList, open((configs.get('pcap_folder')+'/streamSkippedList.pickle'), "wb" ), 2)
+    pickle.dump(streamSkippedList, open((configs.get('pcap_folder') + '/streamSkippedList.pickle'), "wb"), 2)
 
-    pickle.dump((clientQ, udpClientPorts, list(tcpCSPs), replay_name), open((pcap_file + '_client_all.pickle'), "wb"), 2)
+    pickle.dump((clientQ, udpClientPorts, list(tcpCSPs), replay_name), open((pcap_file + '_client_all.pickle'), "wb"),
+                2)
     pickle.dump((serverQ, LUT, getLUT, udpServers, tcpServerPorts, replay_name),
                 open((pcap_file + '_server_all.pickle'), "wb"), 2)
     json.dump((clientQ, udpClientPorts, list(tcpCSPs), replay_name), open((pcap_file + '_client_all.json'), "w"),
