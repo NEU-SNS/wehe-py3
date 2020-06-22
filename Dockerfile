@@ -21,7 +21,6 @@ RUN pip3 install --no-cache reverse-geocoder
 RUN pip3 install --no-cache reverse-geocode
 RUN pip3 install --no-cache prometheus_client
 ADD src /wehe
-ADD data /data
 ADD replayTraces /replayTraces
 WORKDIR /wehe
 # You must provide a local hostname argument when you start this image.
