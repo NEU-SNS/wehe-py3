@@ -1244,12 +1244,13 @@ class SideChannel(object):
                            action=False)
             # recursively change the dClient results' ownership from root to user
             # makes it easier to delete after data is backed up
-            uid = int(os.getenv("SUDO_UID"))
-            for root, dirs, files in os.walk(dClient.targetFolder):
-                for dir in dirs:
-                    os.chown(os.path.join(root, dir), uid, uid)
-                for file in files:
-                    os.chown(os.path.join(root, file), uid, uid)
+            if os.getenv("SUDO_UID") :
+                uid = int(os.getenv("SUDO_UID"))
+                for root, dirs, files in os.walk(dClient.targetFolder):
+                    for dir in dirs:
+                        os.chown(os.path.join(root, dir), uid, uid)
+                    for file in files:
+                        os.chown(os.path.join(root, file), uid, uid)
 
         return True
 
