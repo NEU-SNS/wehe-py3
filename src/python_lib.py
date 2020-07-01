@@ -699,7 +699,6 @@ class tcpdump(object):
         try:
             self._p.terminate()
             output = self._p.communicate()
-            print("what is the output!", output)
             # output = [x.partition(' ')[0] for x in output[1].split('\n')[1:4]]
         except AttributeError:
             return 'None'
