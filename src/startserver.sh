@@ -18,7 +18,6 @@ python3 replay_analyzerServer.py \
   --ConfigFile=configs.cfg \
   --original_ports=True \
   --certs-folders=/wehe/ssl/ \
-  --tcpdumpInt=${INTERFACE}
   &
 
 # The replay server
@@ -26,6 +25,7 @@ python3 replay_server.py \
   --ConfigFile=configs.cfg \
   --original_ports=True \
   --certs-folders=/wehe/ssl/ \
+  --tcpdumpInt=${INTERFACE} \
   &
 
 # Wait for both servers to terminate.
