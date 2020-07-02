@@ -5,7 +5,7 @@ screen -X -S replay quit
 
 sleep 5
 
-cd /home/ubuntu/wehe_desktop_py3/src/
+cd /home/ubuntu/wehe-py3/src/
 
 screen -S analyzer -d -m sudo python3 replay_analyzerServer.py --ConfigFile=configs.cfg --original_ports=True
 
