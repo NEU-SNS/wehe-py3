@@ -199,6 +199,7 @@ class ClientObj(object):
 
     def setDump(self, dumpName):
         self.dumpName = dumpName
+        print("seting dump", Configs().get('tcpdumpInt'))
         if Configs().get('tcpdumpInt') == "default":
             self.dump = tcpdump(dump_name=dumpName, targetFolder=self.tcpdumpsFolder)
         else:
