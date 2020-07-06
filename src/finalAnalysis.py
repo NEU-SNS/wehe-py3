@@ -33,7 +33,7 @@ import testHypothesis as TH
 DEBUG = 0
 
 
-elogger = logging.getLogger('errorLogger')
+# elogger = logging.getLogger('errorLogger')
 
 
 class ResultObj(object):
@@ -65,8 +65,15 @@ class ResultObj(object):
 def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='Client'):
     replayInfodir = path + '/' + userID + '/replayInfo/'
     regexOriginal = '*_' + str(historyCount) + '_' + str(0) + '.json'
-    replayOriginal = glob.glob(replayInfodir + regexOriginal)
-    replayInfo = json.load(open(replayOriginal[0], 'r'))
+    regexTest = '*_' + str(historyCount) + '_' + str(testID) + '.json'
+    replayInfoOriginal = glob.glob(replayInfodir + regexOriginal)
+    replayInfoTest = glob.glob(replayInfodir + regexTest)
+    if os.path.isfile(replayInfoOriginal[0]):
+        replayInfo = json.load(open(replayInfoOriginal[0], 'r'))
+    elif os.path.isfile(replayInfoTest[0]):
+        replayInfo = json.load(open(replayInfoTest[0], 'r'))
+    else:
+        replayInfo = ["", "", "", "", "", ""]
 
     realID = replayInfo[2]
     replayName = replayInfo[4]
@@ -83,8 +90,8 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
             (xputO, durO) = json.load(open(fileOriginal[0], 'r'))
             (xputR, durR) = json.load(open(fileRandom[0], 'r'))
         except Exception as e:
-            elogger.error('FAIL at loading the client xputs', e, userID, historyCount, testID)
-            # print('FAIL at loading client side throughputs', e)
+            # elogger.error('FAIL at loading the client xputs', e, userID, historyCount, testID)
+            print('FAIL at loading client side throughputs', e)
             return None
     # Do server side analysis
     else:
@@ -98,7 +105,8 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
             (xputR, durR) = TH.adjustedXput(fileRandom[0], xputBuckets)
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
-            elogger.error('FAIL at loading the server xputs', e, userID, historyCount, testID)
+            # elogger.error('FAIL at loading the server xputs', e, userID, historyCount, testID)
+            print('FAIL at loading the server xputs', e, userID, historyCount, testID)
             return None
 
     try:
@@ -109,7 +117,8 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
         # Only use none-zero throughputs for test
         forPlot, results = testIt(xputO, xputR, resultFile, alpha)
     except Exception as e:
-        elogger.error('FAIL at testing the result for '.format(userID, historyCount, testID))
+        # elogger.error('FAIL at testing the result for '.format(userID, historyCount, testID))
+        print('FAIL at testing the result for '.format(userID, historyCount, testID))
         return None
 
     resultObj = ResultObj(realID, historyCount, testID, replayName, extraString, incomingTime)
