@@ -68,9 +68,9 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
     regexTest = '*_' + str(historyCount) + '_' + str(testID) + '.json'
     replayInfoOriginal = glob.glob(replayInfodir + regexOriginal)
     replayInfoTest = glob.glob(replayInfodir + regexTest)
-    if os.path.isfile(replayInfoOriginal[0]):
+    if replayInfoOriginal:
         replayInfo = json.load(open(replayInfoOriginal[0], 'r'))
-    elif os.path.isfile(replayInfoTest[0]):
+    elif replayInfoTest:
         replayInfo = json.load(open(replayInfoTest[0], 'r'))
     else:
         replayInfo = ["", "", "", "", "", ""]
