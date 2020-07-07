@@ -39,6 +39,8 @@ try:
 except:
     pass
 
+logger = logging.getLogger('replay_server')
+
 
 def name2code(key, what):
     '''
@@ -652,8 +654,12 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
     p = subprocess.call(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # Remove the intermediate pcaps
-    commandrm = ['rm', '-r', in_pcap, interm1_pcap, interm2_pcap]
-    p = subprocess.call(commandrm, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    interm_pcaps = [in_pcap, interm1_pcap, interm2_pcap]
+    LOG_ACTION(logger, 'Removing interm pcaps: {}'.format(interm_pcaps), indent=2, action=False)
+    for interm_pcap in interm_pcaps:
+        os.remove(interm_pcap)
+    # commandrm = ['rm', '-r', in_pcap, interm1_pcap, interm2_pcap]
+    # p = subprocess.call(commandrm, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 class tcpdump(object):

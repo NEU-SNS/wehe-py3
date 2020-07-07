@@ -199,8 +199,10 @@ class ClientObj(object):
 
     def setDump(self, dumpName):
         self.dumpName = dumpName
-
-        self.dump = tcpdump(dump_name=dumpName, targetFolder=self.tcpdumpsFolder, interface="net1")
+        if Configs().get('tcpdumpInt') == "default":
+            self.dump = tcpdump(dump_name=dumpName, targetFolder=self.tcpdumpsFolder)
+        else:
+            self.dump = tcpdump(dump_name=dumpName, targetFolder=self.tcpdumpsFolder, interface=Configs().get('tcpdumpInt'))
 
     def create_info_json(self, infoFile):
         # To protect user privacy

@@ -65,8 +65,15 @@ class ResultObj(object):
 def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='Client'):
     replayInfodir = path + '/' + userID + '/replayInfo/'
     regexOriginal = '*_' + str(historyCount) + '_' + str(0) + '.json'
-    replayOriginal = glob.glob(replayInfodir + regexOriginal)
-    replayInfo = json.load(open(replayOriginal[0], 'r'))
+    regexTest = '*_' + str(historyCount) + '_' + str(testID) + '.json'
+    replayInfoOriginal = glob.glob(replayInfodir + regexOriginal)
+    replayInfoTest = glob.glob(replayInfodir + regexTest)
+    if replayInfoOriginal:
+        replayInfo = json.load(open(replayInfoOriginal[0], 'r'))
+    elif replayInfoTest:
+        replayInfo = json.load(open(replayInfoTest[0], 'r'))
+    else:
+        replayInfo = ["", "", "", "", "", ""]
 
     realID = replayInfo[2]
     replayName = replayInfo[4]
@@ -83,13 +90,10 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
             (xputO, durO) = json.load(open(fileOriginal[0], 'r'))
             (xputR, durR) = json.load(open(fileRandom[0], 'r'))
         except Exception as e:
-            # elogger.error('FAIL at loading the client xputs', e)
+            # elogger.error('FAIL at loading the client xputs', e, userID, historyCount, testID)
             print('FAIL at loading client side throughputs', e)
             return None
     # Do server side analysis
-    # After the analysis is done, scp the pcap file back to achtung immediately
-    # KNOWN ISSUE: sometimes the pcap file does not get scp/rm
-    # --- Temporal Solution: run dataCleaning.py periodically on the server to backup data as well as pcaps that are left on the replay servers
     else:
         try:
             dumpDir = path + '/' + userID + '/tcpdumpsResults/'
@@ -101,7 +105,8 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
             (xputR, durR) = TH.adjustedXput(fileRandom[0], xputBuckets)
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
-            print('FAIL at loading server side throughputs', e)
+            # elogger.error('FAIL at loading the server xputs', e, userID, historyCount, testID)
+            print('FAIL at loading the server xputs', e, userID, historyCount, testID)
             return None
 
     try:
@@ -113,7 +118,7 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
         forPlot, results = testIt(xputO, xputR, resultFile, alpha)
     except Exception as e:
         # elogger.error('FAIL at testing the result for '.format(userID, historyCount, testID))
-        print('FAIL at loading result', e)
+        print('FAIL at testing the result for '.format(userID, historyCount, testID))
         return None
 
     resultObj = ResultObj(realID, historyCount, testID, replayName, extraString, incomingTime)

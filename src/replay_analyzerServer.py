@@ -619,6 +619,7 @@ def loadAndReturnResult(userID, historyCount, testID, args):
         # maybe the POST request is missing, try putting the test to the analyzer queue
         if os.path.isfile(replayInfoFile) and os.path.isfile(clientXputFile) and os.path.isfile(
                 clientOriginalXputFile):
+            LOG_ACTION(logger, 'result not ready yet, putting into POSTq :{}, {}, {}'.format(userID, historyCount, testID))
             POSTq.put((userID, historyCount, testID))
         return json.dumps({'success': False, 'error': 'No result found'})
 
