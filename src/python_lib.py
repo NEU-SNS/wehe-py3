@@ -652,8 +652,11 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
     p = subprocess.call(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # Remove the intermediate pcaps
-    commandrm = ['rm', '-r', in_pcap, interm1_pcap, interm2_pcap]
-    p = subprocess.call(commandrm, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    inter_pcaps = [in_pcap, interm1_pcap, interm2_pcap]
+    for inter_pcap in inter_pcaps:
+        os.remove(inter_pcap)
+    # commandrm = ['rm', '-r', in_pcap, interm1_pcap, interm2_pcap]
+    # p = subprocess.call(commandrm, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 class tcpdump(object):
