@@ -19,20 +19,11 @@ limitations under the License.
 #######################################################################################################
 '''
 
-import sys, os, configparser, math, json, time, subprocess, subprocess, \
+import sys, os, configparser, math, json, time, subprocess, \
     random, string, logging, logging.handlers, socket, psutil, hashlib
 
-import codecs
-
-from logging.handlers import RotatingFileHandler
 import multiprocessing, threading, logging, sys, traceback
 
-try:
-    import gevent.subprocess
-except:
-    import subprocess
-
-    print('##### gevent NOT AVAILABALE! Ok for client side!')
 
 try:
     import dpkt
