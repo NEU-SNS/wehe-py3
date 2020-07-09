@@ -645,15 +645,20 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
     port_list = list(map(int, port_list))
 
     filter = 'port ' + ' or port '.join(map(str, port_list))
-    command = ['tcpdump', '-r', in_pcap, '-w', interm_pcap, filter]
+    command = "tcpdump -r {} -w {} {}".format(in_pcap, interm_pcap, filter)
     p = subprocess.check_output(command, shell=True)
+    print("filtering", p)
 
     if ":" in anonymizedIP:
-        command = ['tcprewrite', '--mtu=128', '--mtu-trunc', '--pnat=[{}]:[{}]'.format(clientIP, anonymizedIP), '-i', interm_pcap, '-o', out_pcap]
+        command = "tcprewrite --mtu=128 --mtu-trunc --pnat=[{}]:[{}] --infile={} --outfile={}".format(clientIP, anonymizedIP, interm_pcap, out_pcap)
     else:
-        command = ['tcprewrite', '--mtu=128', '--mtu-trunc', '--pnat={}:{}'.format(clientIP, anonymizedIP), '-i', interm_pcap, '-o', out_pcap]
+        command = "tcprewrite --mtu=128 --mtu-trunc --pnat={}:{} --infile={} --outfile={}".format(clientIP,
+                                                                                                      anonymizedIP,
+                                                                                                      interm_pcap,
+                                                                                                      out_pcap)
     p = subprocess.check_output(command, shell=True)
 
+    print("tcp rewriting", p)
     # Remove the intermediate pcaps
     interm_pcaps = [in_pcap, interm_pcap]
     for interm_pcap in interm_pcaps:
