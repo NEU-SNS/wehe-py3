@@ -1232,6 +1232,8 @@ class SideChannel(object):
         del self.id2g[dClient.realID]
         # del self.all_clients[id]
 
+        print("SecondarySuccess, exceptions", dClient.secondarySuccess, dClient.exceptions)
+
         # Create _out.pcap (only if the replay was successful and no content modification)
         if dClient.secondarySuccess:
             tcpdumpstarts = time.time()
