@@ -640,30 +640,22 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
     # If no contentmodification, we store only packet headers
     # generate an intermidiate pcap file with packets truncated to 96 bytes each
     # Use this new intermidiate pcap as in_pcap
-    interm1_pcap = in_pcap.replace('.pcap', '_interm1.pcap')
-    interm2_pcap = in_pcap.replace('.pcap', '_interm2.pcap')
-    tcommand = ['editcap', '-s', '128', in_pcap, interm1_pcap]
-    p = subprocess.check_output(tcommand, shell=True)
-
-    print("edit pcap, ", p)
+    interm_pcap = in_pcap.replace('.pcap', '_interm.pcap')
 
     port_list = list(map(int, port_list))
 
     filter = 'port ' + ' or port '.join(map(str, port_list))
-    print("Filtering pcap using port", interm1_pcap.split("/")[-1], interm2_pcap.split("/")[-1], filter)
-    command = ['tcpdump', '-r', interm1_pcap, '-w', interm2_pcap, filter]
+    command = ['tcpdump', '-r', in_pcap, '-w', interm_pcap, filter]
     p = subprocess.check_output(command, shell=True)
 
-    print("Filtering pcap, ", p)
-
-    print("Anonymizing IPs in pcap", interm2_pcap.split("/")[-1], out_pcap.split("/")[-1], anonymizedIP)
-    command = ['tcprewrite', '--pnat={}:{}'.format(clientIP, anonymizedIP), '-i', interm2_pcap, '-o', out_pcap]
+    if ":" in anonymizedIP:
+        command = ['tcprewrite', '--mtu=128', '--mtu-trunc', '--pnat=[{}]:[{}]'.format(clientIP, anonymizedIP), '-i', interm_pcap, '-o', out_pcap]
+    else:
+        command = ['tcprewrite', '--mtu=128', '--mtu-trunc', '--pnat={}:{}'.format(clientIP, anonymizedIP), '-i', interm_pcap, '-o', out_pcap]
     p = subprocess.check_output(command, shell=True)
-
-    print("tcprewrite pcap, ", p)
 
     # Remove the intermediate pcaps
-    interm_pcaps = [in_pcap, interm1_pcap, interm2_pcap]
+    interm_pcaps = [in_pcap, interm_pcap]
     for interm_pcap in interm_pcaps:
         try:
             print("Trying to remove", interm_pcap.split("/")[-1])
@@ -702,7 +694,6 @@ class tcpdump(object):
         if host is not None:
             command += ['host', host]
 
-        print("Starting TCPDUMP", command)
         self._p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         self._running = True
@@ -716,7 +707,6 @@ class tcpdump(object):
             output = self._p.communicate()
         except AttributeError:
             return 'None'
-        print("STOPPING TCPDUMP,", output, self._p)
         self._running = False
         return output
 
