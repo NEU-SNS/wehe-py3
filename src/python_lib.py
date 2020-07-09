@@ -635,6 +635,7 @@ def getSystemStat():
 
 
 def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
+    print("CLEANING PCAP")
     out_pcap = in_pcap.replace('.pcap', '_out.pcap')
     # If no contentmodification, we store only packet headers
     # generate an intermidiate pcap file with packets truncated to 96 bytes each
@@ -647,19 +648,27 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
     port_list = list(map(int, port_list))
 
     filter = 'port ' + ' or port '.join(map(str, port_list))
+    print("Filtering pcap using port", interm1_pcap, interm2_pcap, filter)
     command = ['tcpdump', '-r', interm1_pcap, '-w', interm2_pcap, filter]
     p = subprocess.call(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+    print("Anonymizing IPs in pcap", interm2_pcap, out_pcap, anonymizedIP)
     command = ['tcprewrite', '--pnat={}:{}'.format(clientIP, anonymizedIP), '-i', interm2_pcap, '-o', out_pcap]
     p = subprocess.call(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # Remove the intermediate pcaps
     interm_pcaps = [in_pcap, interm1_pcap, interm2_pcap]
-    LOG_ACTION(logger, 'Removing interm pcaps: {}'.format(interm_pcaps), indent=2, action=False)
+    print('Removing interm pcaps: {}'.format(interm_pcaps))
     for interm_pcap in interm_pcaps:
-        os.remove(interm_pcap)
-    # commandrm = ['rm', '-r', in_pcap, interm1_pcap, interm2_pcap]
-    # p = subprocess.call(commandrm, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            print("Trying to remove", interm_pcap)
+            os.remove(interm_pcap)
+        except OSError as error:
+            print("Removing error", error, interm_pcap)
+
+    print("Removing interm pcaps with a subprocess command")
+    commandrm = ['rm', '-r', in_pcap, interm1_pcap, interm2_pcap]
+    p = subprocess.call(commandrm, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
 class tcpdump(object):
@@ -691,10 +700,9 @@ class tcpdump(object):
 
         if host is not None:
             command += ['host', host]
-        try:
-            self._p = gevent.subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except NameError:
-            self._p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        print("Starting TCPDUMP", command)
+        self._p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         self._running = True
 
@@ -705,9 +713,9 @@ class tcpdump(object):
         try:
             self._p.terminate()
             output = self._p.communicate()
-            # output = [x.partition(' ')[0] for x in output[1].split('\n')[1:4]]
         except AttributeError:
             return 'None'
+        print("STOPPING TCPDUMP,", output, self._p)
         self._running = False
         return output
 
