@@ -1020,6 +1020,7 @@ class SideChannel(object):
         data = self.receive_object(connection)
         if data is None: return
         if 'NoJitter' not in data:
+            print("Client Xputs", data)
             xput, ts = json.loads(data)
             # The last sampled throughput might be outlier since the intervals can be extremely small
             xput = xput[:-1]
