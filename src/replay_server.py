@@ -1158,7 +1158,10 @@ class SideChannel(object):
 
         obj = self.receive_b_bytes(connection, object_size)
 
-        return obj.decode('ascii', 'ignore')
+        if obj:
+            return obj.decode('ascii', 'ignore')
+        else:
+            return ""
 
     def receive_b_bytes(self, connection, b):
         data = b''
