@@ -20,7 +20,7 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging, logging.handlers, socket, psutil, hashlib
+    random, string, logging.handlers, socket, psutil, hashlib
 
 import multiprocessing, threading, logging, sys, traceback
 
@@ -626,11 +626,8 @@ def getSystemStat():
 
 
 def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
-    print("CLEANING PCAP")
     out_pcap = in_pcap.replace('.pcap', '_out.pcap')
-    # If no contentmodification, we store only packet headers
-    # generate an intermidiate pcap file with packets truncated to 96 bytes each
-    # Use this new intermidiate pcap as in_pcap
+    # If there is no content modification, we store only packet headers (first 128 bytes)
     interm_pcap = in_pcap.replace('.pcap', '_interm.pcap')
 
     port_list = list(map(int, port_list))
@@ -638,18 +635,18 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
     filter = 'port ' + ' or port '.join(map(str, port_list))
     command = "tcpdump -r {} -w {} {}".format(in_pcap, interm_pcap, filter)
     p = subprocess.check_output(command, shell=True)
-    print("filtering", p)
 
     if ":" in anonymizedIP:
-        command = "tcprewrite --mtu=128 --mtu-trunc --pnat=[{}]:[{}] --infile={} --outfile={}".format(clientIP, anonymizedIP, interm_pcap, out_pcap)
+        command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
+                   "--infile={}".format(in_pcap),
+                   "--outfile={}".format(out_pcap)]
     else:
-        command = "tcprewrite --mtu=128 --mtu-trunc --pnat={}:{} --infile={} --outfile={}".format(clientIP,
-                                                                                                      anonymizedIP,
-                                                                                                      interm_pcap,
-                                                                                                      out_pcap)
+        command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat={}:{}".format(clientIP, anonymizedIP),
+                   "--infile={}".format(in_pcap),
+                   "--outfile={}".format(out_pcap)]
+
     p = subprocess.check_output(command, shell=True)
 
-    print("tcp rewriting", p)
     # Remove the intermediate pcaps
     interm_pcaps = [in_pcap, interm_pcap]
     for interm_pcap in interm_pcaps:
