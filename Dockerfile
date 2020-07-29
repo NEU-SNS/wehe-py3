@@ -6,6 +6,7 @@ RUN apt-get install gcc
 RUN apt-get install libc-dev
 RUN apt-get install -y tcpdump
 RUN apt-get install -y tcpreplay
+RUN apt-get install -y --no-install-recommends apt-utils
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y wireshark
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
 RUN pip3 install --no-cache matplotlib

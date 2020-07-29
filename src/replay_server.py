@@ -1158,7 +1158,10 @@ class SideChannel(object):
 
         obj = self.receive_b_bytes(connection, object_size)
 
-        return obj.decode('ascii', 'ignore')
+        if obj:
+            return obj.decode('ascii', 'ignore')
+        else:
+            return None
 
     def receive_b_bytes(self, connection, b):
         data = b''
@@ -1231,6 +1234,8 @@ class SideChannel(object):
         del self.all_side_conns[g]
         del self.id2g[dClient.realID]
         # del self.all_clients[id]
+
+        print("SecondarySuccess, exceptions", dClient.secondarySuccess, dClient.exceptions)
 
         # Create _out.pcap (only if the replay was successful and no content modification)
         if dClient.secondarySuccess:

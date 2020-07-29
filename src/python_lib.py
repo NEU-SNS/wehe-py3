@@ -19,20 +19,11 @@ limitations under the License.
 #######################################################################################################
 '''
 
-import sys, os, configparser, math, json, time, subprocess, subprocess, \
-    random, string, logging, logging.handlers, socket, psutil, hashlib
+import sys, os, configparser, math, json, time, subprocess, \
+    random, string, logging.handlers, socket, psutil, hashlib
 
-import codecs
-
-from logging.handlers import RotatingFileHandler
 import multiprocessing, threading, logging, sys, traceback
 
-try:
-    import gevent.subprocess
-except:
-    import subprocess
-
-    print('##### gevent NOT AVAILABALE! Ok for client side!')
 
 try:
     import dpkt
@@ -636,30 +627,34 @@ def getSystemStat():
 
 def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
     out_pcap = in_pcap.replace('.pcap', '_out.pcap')
-    # If no contentmodification, we store only packet headers
-    # generate an intermidiate pcap file with packets truncated to 96 bytes each
-    # Use this new intermidiate pcap as in_pcap
-    interm1_pcap = in_pcap.replace('.pcap', '_interm1.pcap')
-    interm2_pcap = in_pcap.replace('.pcap', '_interm2.pcap')
-    tcommand = ['editcap', '-s', '128', in_pcap, interm1_pcap]
-    p = subprocess.call(tcommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # If there is no content modification, we store only packet headers (first 128 bytes)
+    interm_pcap = in_pcap.replace('.pcap', '_interm.pcap')
 
     port_list = list(map(int, port_list))
 
     filter = 'port ' + ' or port '.join(map(str, port_list))
-    command = ['tcpdump', '-r', interm1_pcap, '-w', interm2_pcap, filter]
-    p = subprocess.call(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    command = "tcpdump -r {} -w {} {}".format(in_pcap, interm_pcap, filter)
+    p = subprocess.check_output(command, shell=True)
 
-    command = ['tcprewrite', '--pnat={}:{}'.format(clientIP, anonymizedIP), '-i', interm2_pcap, '-o', out_pcap]
-    p = subprocess.call(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if ":" in anonymizedIP:
+        command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
+                   "--infile={}".format(interm_pcap),
+                   "--outfile={}".format(out_pcap)]
+    else:
+        command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat={}:{}".format(clientIP, anonymizedIP),
+                   "--infile={}".format(interm_pcap),
+                   "--outfile={}".format(out_pcap)]
+
+    p = subprocess.check_output(command, shell=True)
 
     # Remove the intermediate pcaps
-    interm_pcaps = [in_pcap, interm1_pcap, interm2_pcap]
-    LOG_ACTION(logger, 'Removing interm pcaps: {}'.format(interm_pcaps), indent=2, action=False)
+    interm_pcaps = [in_pcap, interm_pcap]
     for interm_pcap in interm_pcaps:
-        os.remove(interm_pcap)
-    # commandrm = ['rm', '-r', in_pcap, interm1_pcap, interm2_pcap]
-    # p = subprocess.call(commandrm, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            print("Trying to remove", interm_pcap.split("/")[-1])
+            os.remove(interm_pcap)
+        except OSError as error:
+            print("Removing error", error, interm_pcap.split("/")[-1])
 
 
 class tcpdump(object):
@@ -691,10 +686,8 @@ class tcpdump(object):
 
         if host is not None:
             command += ['host', host]
-        try:
-            self._p = gevent.subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except NameError:
-            self._p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        self._p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         self._running = True
 
@@ -705,7 +698,6 @@ class tcpdump(object):
         try:
             self._p.terminate()
             output = self._p.communicate()
-            # output = [x.partition(' ')[0] for x in output[1].split('\n')[1:4]]
         except AttributeError:
             return 'None'
         self._running = False
