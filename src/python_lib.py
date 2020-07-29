@@ -638,11 +638,11 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
 
     if ":" in anonymizedIP:
         command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
-                   "--infile={}".format(in_pcap),
+                   "--infile={}".format(interm_pcap),
                    "--outfile={}".format(out_pcap)]
     else:
         command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat={}:{}".format(clientIP, anonymizedIP),
-                   "--infile={}".format(in_pcap),
+                   "--infile={}".format(interm_pcap),
                    "--outfile={}".format(out_pcap)]
 
     p = subprocess.check_output(command, shell=True)
