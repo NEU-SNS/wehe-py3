@@ -1046,8 +1046,10 @@ class SideChannel(object):
         data = data.split(';')
 
         if data[0] != 'Result':
-            print('\nSomething weird happened! Result\n')
+            LOG_ACTION(logger, '\nSomething weird happened! Result\n', indent=2, action=False)
             return
+
+        LOG_ACTION(logger, 'Received DATA: {}, endOfTest {}, testID {}'.format(data, endOfTest, testID), indent=2, action=False)
 
         if data[1] == 'Yes':
             if self.send_reults(connection) is False: return
