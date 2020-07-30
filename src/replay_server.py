@@ -101,25 +101,6 @@ def get_anonymizedIP(ip):
     return anonymizedIP
 
 
-def getCurrentResultsFolder():
-    currentResultsFolder = Configs().get('resultsFolder')
-    currentYMD = time.strftime("%Y-%m-%d", time.gmtime())
-    currentY = currentYMD.split("-")[0]
-    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentY)
-    if not os.path.exists(currentResultsFolder):
-        os.mkdir(currentResultsFolder)
-    currentM = currentYMD.split("-")[1]
-    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentM)
-    if not os.path.exists(currentResultsFolder):
-        os.mkdir(currentResultsFolder)
-    currentD = currentYMD.split("-")[2]
-    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentD)
-    if not os.path.exists(currentResultsFolder):
-        os.mkdir(currentResultsFolder)
-
-    return currentResultsFolder
-
-
 class TestObject(object):
     def __init__(self, ip, realID, replayName, testID):
         self.ip = ip
@@ -172,9 +153,8 @@ class ClientObj(object):
         self.mobileStats = None
         self.clientTime = None
         self.dumpName = None
-        self.targetFolder = getCurrentResultsFolder() + '/' + realID + '/'
+        self.targetFolder = Configs().get('tmpResultsFolder') + '/' + realID + '/'
         self.tcpdumpsFolder = self.targetFolder + 'tcpdumpsResults/'
-        self.jittersFolder = self.targetFolder + 'jitterResults/'
         self.clientXputFolder = self.targetFolder + 'clientXputs/'
         self.replayInfoFolder = self.targetFolder + 'replayInfo/'
         self.smpacNum = smpacNum
@@ -184,15 +164,8 @@ class ClientObj(object):
         if not os.path.exists(self.targetFolder):
             os.makedirs(self.targetFolder)
             os.makedirs(self.tcpdumpsFolder)
-            os.makedirs(self.jittersFolder)
             os.makedirs(self.clientXputFolder)
             os.makedirs(self.replayInfoFolder)
-
-            xputsFolder = self.targetFolder + 'xputs/'
-            os.makedirs(xputsFolder)
-
-            plotsFolder = self.targetFolder + 'plots/'
-            os.makedirs(plotsFolder)
 
             decisionsFolder = self.targetFolder + 'decisions/'
             os.makedirs(decisionsFolder)
@@ -969,7 +942,8 @@ class SideChannel(object):
         LOG_ACTION(logger,
                    'Starting tcpdump for: id: {}, historyCount: {}'.format(dClient.realID, dClient.historyCount),
                    indent=2, action=False)
-        resultsFolder = getCurrentResultsFolder()
+        # resultsFolder = getCurrentResultsFolder()
+        resultsFolder = Configs().get('tmpResultsFolder') + '/' + realID + '/'
 
         # print '\r\n STARTING TCPDUMP FOR THIS CLIENT'
         command = dClient.dump.start(host=dClient.ip)
@@ -1004,18 +978,6 @@ class SideChannel(object):
         dClient.success = True
         dClient.clientTime = data[1]
 
-        # #7- Receive jitter
-        # data = self.receive_object(connection)
-        # if data is None: return
-        #
-        # data = data.split(';')
-        # if data[0] == 'WillSendClientJitter':
-        #     if not self.get_jitter(connection, dClient.jittersFolder+'/jitter_sent_'+dClient.dumpName+'.txt'): return
-        #     if not self.get_jitter(connection, dClient.jittersFolder+'/jitter_rcvd_'+dClient.dumpName+'.txt'): return
-        #
-        # elif data[0] == 'NoJitter':
-        #     pass
-
         # 7- Receive client throughput info
         data = self.receive_object(connection)
         if data is None: return
@@ -1025,9 +987,7 @@ class SideChannel(object):
             xput = xput[:-1]
             ts = ts[:-1]
 
-            resultsFolder = getCurrentResultsFolder()
-
-            folder = resultsFolder + '/' + realID + '/clientXputs/'
+            folder = resultsFolder + '/clientXputs/'
             xputFile = folder + 'Xput_{}_{}_{}.json'.format(realID, historyCount, testID)
 
             try:
@@ -1067,7 +1027,7 @@ class SideChannel(object):
         # 9- Set secondarySuccess to True and close connection
         dClient.secondarySuccess = True
 
-        folder = resultsFolder + '/' + realID + '/replayInfo/'
+        folder = resultsFolder + '/replayInfo/'
         replayInfoFile = folder + 'replayInfo_{}_{}_{}.json'.format(realID, historyCount, testID)
 
         try:
@@ -1243,7 +1203,8 @@ class SideChannel(object):
         if dClient.secondarySuccess:
             tcpdumpstarts = time.time()
             if dClient.exceptions != 'ContentModification':
-                clean_pcap(dClient.dump.dump_name, dClient.id, get_anonymizedIP(dClient.id), dClient.ports)
+                permResultsFolder = getCurrentResultsFolder() + "/{}/tcpdumpsResults/".format(dClient.realID)
+                clean_pcap(dClient.dump.dump_name, dClient.id, get_anonymizedIP(dClient.id), dClient.ports, permResultsFolder)
                 tcpdumpends = time.time()
                 cpuPercent, memPercent, diskPercent, upLoad = getSystemStat()
                 LOG_ACTION(logger,
@@ -1779,6 +1740,7 @@ def run(*args):
 
     PRINT_ACTION('Configuring paths', 0)
     configs.set('resultsFolder', configs.get('mainPath') + configs.get('resultsFolder'))
+    configs.set('tmpResultsFolder', configs.get('mainPath') + configs.get('tmpResultsFolder'))
     configs.set('logsPath', configs.get('mainPath') + configs.get('logsPath'))
     configs.set('replayLog', configs.get('logsPath') + configs.get('replayLog'))
     configs.set('errorsLog', configs.get('logsPath') + configs.get('errorsLog'))
@@ -1811,6 +1773,9 @@ def run(*args):
     LOG_ACTION(logger, 'Creating results folders')
     if not os.path.isdir(configs.get('resultsFolder')):
         os.makedirs(configs.get('resultsFolder'))
+
+    if not os.path.isdir(configs.get('tmpResultsFolder')):
+        os.makedirs(configs.get('tmpResultsFolder'))
 
     if configs.get('iperf'):
         LOG_ACTION(logger, 'Starting iperf server')

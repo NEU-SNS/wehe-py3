@@ -190,6 +190,24 @@ def createRotatingLog_multip(logger, logFile):
     logger.addHandler(handler)
 
 
+def getCurrentResultsFolder():
+    currentResultsFolder = Configs().get('resultsFolder')
+    currentYMD = time.strftime("%Y-%m-%d", time.gmtime())
+    currentY = currentYMD.split("-")[0]
+    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentY)
+    if not os.path.exists(currentResultsFolder):
+        os.mkdir(currentResultsFolder)
+    currentM = currentYMD.split("-")[1]
+    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentM)
+    if not os.path.exists(currentResultsFolder):
+        os.mkdir(currentResultsFolder)
+    currentD = currentYMD.split("-")[2]
+    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentD)
+    if not os.path.exists(currentResultsFolder):
+        os.mkdir(currentResultsFolder)
+
+    return currentResultsFolder
+
 def LOG_ACTION(logger, message, level=20, doPrint=True, indent=0, action=True, exit=False, newLine=False):
     # DEBUG
     if level == 10:
@@ -625,7 +643,7 @@ def getSystemStat():
     return cpuPercent, memPercent, diskPercent, upLoad
 
 
-def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
+def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, permResultsFolder):
     out_pcap = in_pcap.replace('.pcap', '_out.pcap')
     # If there is no content modification, we store only packet headers (first 128 bytes)
     interm_pcap = in_pcap.replace('.pcap', '_interm.pcap')
@@ -645,7 +663,7 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
                    "--infile={}".format(interm_pcap),
                    "--outfile={}".format(out_pcap)]
 
-    p = subprocess.check_output(command, shell=True)
+    p = subprocess.check_output(command)
 
     # Remove the intermediate pcaps
     interm_pcaps = [in_pcap, interm_pcap]
@@ -655,6 +673,12 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list):
             os.remove(interm_pcap)
         except OSError as error:
             print("Removing error", error, interm_pcap.split("/")[-1])
+
+    if not os.path.exists(permResultsFolder):
+        os.mkdir(permResultsFolder)
+
+    mv_command = "mv {} {}".format(out_pcap, permResultsFolder)
+    p = subprocess.check_output(mv_command, shell=True)
 
 
 class tcpdump(object):

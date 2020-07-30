@@ -403,25 +403,6 @@ def getLongestConsecutive(allBytes):
     return longestConsecutive
 
 
-def getCurrentResultsFolder():
-    currentResultsFolder = Configs().get('resultsFolder')
-    currentYMD = time.strftime("%Y-%m-%d", time.gmtime())
-    currentY = currentYMD.split("-")[0]
-    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentY)
-    if not os.path.exists(currentResultsFolder):
-        os.mkdir(currentResultsFolder)
-    currentM = currentYMD.split("-")[1]
-    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentM)
-    if not os.path.exists(currentResultsFolder):
-        os.mkdir(currentResultsFolder)
-    currentD = currentYMD.split("-")[2]
-    currentResultsFolder = "{}/{}/".format(currentResultsFolder, currentD)
-    if not os.path.exists(currentResultsFolder):
-        os.mkdir(currentResultsFolder)
-
-    return currentResultsFolder
-
-
 # Load packet queues and get the contents from the corresponding bytes
 def getContent(replayName, side, bytes, packetNum):
     # step one, load all packet content from client/server pickle/json
@@ -515,48 +496,17 @@ def processResult(results):
     return outres
 
 
-'''
-J'Alerte l'Arcep
-Find the ReplayInfo for the user that wants to alert Arcep, add an additional field 'AlertArcep' : True
-'''
-
-
-def setAlert(userID, historyCount, testID):
-    path = getCurrentResultsFolder()
-    replayInfoDir = path + '/' + userID + '/replayInfo/'
-    regexOriginal = '*_' + str(historyCount) + '_' + str(testID) + '.json'
-    replayOriginal = glob.glob(replayInfoDir + regexOriginal)
-    replayInfo = json.load(open(replayOriginal[0], 'r'))
-    # set the 16th element, alert arcep to true
-    replayInfo[15] = True
-    json.dump(replayInfo, open(replayOriginal[0], 'w'))
-
-
 # Logic:
 # 1. Analyze using the throughputs sent by client (server creates a client decision file for the GET handle to answer client request)
 # 2. Use the tcpdump trace to perform server side analysis (if tcpdump enabled)
 def analyzer(userID, historyCount, testID, xputBuckets, alpha):
-    resultsFolder = getCurrentResultsFolder()
+    resultsFolder = Configs().get('tmpResultsFolder')
     LOG_ACTION(logger, 'analyzer:{}, {}, {}'.format(userID, historyCount, testID))
 
     # return value is None if there is no file to analyze
 
     resObjClient = FA.finalAnalyzer(userID, historyCount, testID, resultsFolder,
-                                    xputBuckets, alpha, side='Client')
-
-    serverAnalysisStarts = time.time()
-
-    resObjServer = FA.finalAnalyzer(userID, historyCount, testID, resultsFolder,
-                                    xputBuckets, alpha, side='Server')
-
-    serverAnalysisEnds = time.time()
-    cpuPercent, memPercent, diskPercent, upLoad = getSystemStat()
-
-    if (serverAnalysisEnds - serverAnalysisStarts) > 1:
-        LOG_ACTION(logger,
-                   'Took {} seconds for server side analysis and cleaning up for UserID {} and historyCount {} testID {} *** CPU {}% MEM {}% DISK {}% UPLOAD {}Mbps'.format(
-                       serverAnalysisEnds - serverAnalysisStarts, userID, historyCount, testID, cpuPercent, memPercent,
-                       diskPercent, upLoad))
+                                    xputBuckets, alpha)
 
 
 def jobDispatcher(q):
@@ -578,17 +528,21 @@ class myJsonEncoder(json.JSONEncoder):
 
 
 def loadAndReturnResult(userID, historyCount, testID, args):
-    resultFolder = getCurrentResultsFolder()
-    resultFile = (resultFolder + userID + '/decisions/' + 'results_{}_{}_{}_{}.json').format(userID, 'Client',
+    resultsFolder = Configs().get('tmpResultsFolder')
+
+    resultFile = (resultsFolder + userID + '/decisions/' + 'results_{}_{}_{}_{}.json').format(userID, 'Client',
                                                                                              historyCount, testID)
 
-    replayInfoFile = (resultFolder + userID + '/replayInfo/' + 'replayInfo_{}_{}_{}.json').format(userID,
+    replayInfoFile = (resultsFolder + userID + '/replayInfo/' + 'replayInfo_{}_{}_{}.json').format(userID,
                                                                                                   historyCount,
                                                                                                   testID)
-    clientXputFile = (resultFolder + userID + '/clientXputs/' + 'Xput_{}_{}_{}.json').format(userID,
+    originalReplayInfoFile = (resultsFolder + userID + '/replayInfo/' + 'replayInfo_{}_{}_{}.json').format(userID,
+                                                                                                  historyCount,
+                                                                                                  0)
+    clientXputFile = (resultsFolder + userID + '/clientXputs/' + 'Xput_{}_{}_{}.json').format(userID,
                                                                                              historyCount,
                                                                                              testID)
-    clientOriginalXputFile = (resultFolder + userID + '/clientXputs/' + 'Xput_{}_{}_{}.json').format(userID,
+    clientOriginalXputFile = (resultsFolder + userID + '/clientXputs/' + 'Xput_{}_{}_{}.json').format(userID,
                                                                                                      historyCount,
                                                                                                      0)
     # if result file is here, return result
@@ -607,6 +561,22 @@ def loadAndReturnResult(userID, historyCount, testID, args):
         xputAvg2 = str(results[5][2])
         ks2dVal = str(results[9])
         ks2pVal = str(results[10])
+
+        # move related files from tmpResultsFolder to permResultsFolder
+        permResultsFolder = getCurrentResultsFolder() + "/{}/".format(userID)
+        permDecisionFolder = "{}/decisions/".format(permResultsFolder)
+        permClientXputFolder = "{}/clientXputs/".format(permResultsFolder)
+        permReplayInfoFolder = "{}/replayInfo/".format(permResultsFolder)
+        for folder in [permResultsFolder, permDecisionFolder, permClientXputFolder, permReplayInfoFolder]:
+            if not os.path.exists(folder):
+                os.mkdir(folder)
+
+        mv_decisions = "mv {} {}".format(resultFile, permDecisionFolder)
+        mv_replayInfos = "mv {} {} {}".format(replayInfoFile, originalReplayInfoFile, permReplayInfoFolder)
+        mv_clientXputs = "mv {} {} {}".format(clientXputFile, clientOriginalXputFile, permClientXputFolder)
+
+        for command in [mv_clientXputs, mv_decisions, mv_replayInfos]:
+            p = subprocess.check_output(command, shell=True)
 
         return json.dumps({'success': True,
                            'response': {'replayName': replayName, 'date': incomingTime, 'userID': userID,
@@ -706,13 +676,6 @@ def postHandler(args):
 
     if command == 'analyze':
         POSTq.put((userID, historyCount, testID))
-    elif command == 'alertArcep':
-        try:
-            setAlert(userID, historyCount, testID)
-            json.dumps({'success': True})
-        except:
-            errorlog_q.put(('Failed to alert', args))
-            return json.dumps({'success': False, 'error': 'Failed to alert'})
     else:
         errorlog_q.put(('unknown command', args))
         return json.dumps({'success': False, 'error': 'unknown command'})
@@ -881,6 +844,7 @@ def main():
 
     PRINT_ACTION('Configuring paths', 0)
     configs.set('resultsFolder', configs.get('mainPath') + configs.get('resultsFolder'))
+    configs.set('tmpResultsFolder', configs.get('mainPath') + configs.get('tmpResultsFolder'))
     configs.set('logsPath', configs.get('mainPath') + configs.get('logsPath'))
     configs.set('analyzerLog', configs.get('logsPath') + configs.get('analyzerLog'))
 

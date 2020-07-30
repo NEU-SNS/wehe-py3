@@ -33,7 +33,7 @@ import testHypothesis as TH
 DEBUG = 0
 
 
-# elogger = logging.getLogger('errorLogger')
+elogger = logging.getLogger('errorLogger')
 
 
 class ResultObj(object):
@@ -62,7 +62,7 @@ class ResultObj(object):
         return dTuple
 
 
-def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='Client'):
+def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side="Client"):
     replayInfodir = path + '/' + userID + '/replayInfo/'
     regexOriginal = '*_' + str(historyCount) + '_' + str(0) + '.json'
     regexTest = '*_' + str(historyCount) + '_' + str(testID) + '.json'
@@ -80,34 +80,17 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
     extraString = replayInfo[5]
     incomingTime = replayInfo[0]
 
-    if side == 'Client':
-        folder = path + '/' + userID + '/clientXputs/'
-        regexOriginal = '*_' + str(historyCount) + '_' + str(0) + '.json'
-        regexRandom = '*_' + str(historyCount) + '_' + str(testID) + '.json'
-        fileOriginal = glob.glob(folder + regexOriginal)
-        fileRandom = glob.glob(folder + regexRandom)
-        try:
-            (xputO, durO) = json.load(open(fileOriginal[0], 'r'))
-            (xputR, durR) = json.load(open(fileRandom[0], 'r'))
-        except Exception as e:
-            # elogger.error('FAIL at loading the client xputs', e, userID, historyCount, testID)
-            print('FAIL at loading client side throughputs', e)
-            return None
-    # Do server side analysis
-    else:
-        try:
-            dumpDir = path + '/' + userID + '/tcpdumpsResults/'
-            regexRandom = '*_' + str(historyCount) + '_' + str(testID) + '_out.pcap'
-            regexOriginal = '*_' + str(historyCount) + '_' + str(0) + '_out.pcap'
-            fileRandom = glob.glob(dumpDir + regexRandom)
-            fileOriginal = glob.glob(dumpDir + regexOriginal)
-            (xputO, durO) = TH.adjustedXput(fileOriginal[0], xputBuckets)
-            (xputR, durR) = TH.adjustedXput(fileRandom[0], xputBuckets)
-        except Exception as e:
-            traceback.print_exc(file=sys.stdout)
-            # elogger.error('FAIL at loading the server xputs', e, userID, historyCount, testID)
-            print('FAIL at loading the server xputs', e, userID, historyCount, testID)
-            return None
+    folder = path + '/' + userID + '/clientXputs/'
+    regexOriginal = '*_' + str(historyCount) + '_' + str(0) + '.json'
+    regexRandom = '*_' + str(historyCount) + '_' + str(testID) + '.json'
+    fileOriginal = glob.glob(folder + regexOriginal)
+    fileRandom = glob.glob(folder + regexRandom)
+    try:
+        (xputO, durO) = json.load(open(fileOriginal[0], 'r'))
+        (xputR, durR) = json.load(open(fileRandom[0], 'r'))
+    except Exception as e:
+        elogger.error('FAIL at loading the client xputs {} {} {}', userID, historyCount, testID)
+        return None
 
     try:
         resultFile = (path + '/' + userID + '/decisions/' + 'results_{}_{}_{}_{}.json').format(userID, side,
@@ -117,28 +100,25 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side='
         # Only use none-zero throughputs for test
         forPlot, results = testIt(xputO, xputR, resultFile, alpha)
     except Exception as e:
-        # elogger.error('FAIL at testing the result for '.format(userID, historyCount, testID))
-        print('FAIL at testing the result for '.format(userID, historyCount, testID))
+        elogger.error('FAIL at testing the result for {} {} {}'.format(userID, historyCount, testID))
         return None
 
     resultObj = ResultObj(realID, historyCount, testID, replayName, extraString, incomingTime)
 
-    resultObj.area_test = results['areaTest']
-    resultObj.ks2_ratio_test = results['ks2ratio']
-    resultObj.xput_avg_original = results['xputAvg1']
-    resultObj.xput_avg_test = results['xputAvg2']
-    resultObj.ks2dVal = results['ks2dVal']
-    resultObj.ks2pVal = results['ks2pVal']
-
-    plotFile = path + '/' + userID + '/plots/xput_{}_{}_{}_{}_{}_{}_{}_{}.png'. \
-        format(userID, side, replayName, historyCount, testID, results['areaTest'], results['ks2dVal'],
-               results['ks2pVal'])
-
-    try:
-        plotCDFs(forPlot, plotFile)
-    except Exception as e:
-        # elogger.error('Error when plotting CDF', userID, historyCount, testID)
-        print('FAIL at plotting', e)
+    # resultObj.area_test = results['areaTest']
+    # resultObj.ks2_ratio_test = results['ks2ratio']
+    # resultObj.xput_avg_original = results['xputAvg1']
+    # resultObj.xput_avg_test = results['xputAvg2']
+    # resultObj.ks2dVal = results['ks2dVal']
+    # resultObj.ks2pVal = results['ks2pVal']
+    #
+    # plotFile = path + '/' + userID + '/plots/xput_{}_{}_{}_{}_{}_{}_{}_{}.png'. \
+    #     format(userID, side, replayName, historyCount, testID, results['areaTest'], results['ks2dVal'],
+    #            results['ks2pVal'])
+    # try:
+    #     plotCDFs(forPlot, plotFile)
+    # except Exception as e:
+    #     elogger.error('Error when plotting CDF {} {} {}', userID, historyCount, testID)
 
     return resultObj
 
@@ -157,9 +137,6 @@ def plotCDFs(xLists, outfile):
 
     plt.ylim((0, 1.1))
 
-    plt.axvline([1.6], linewidth=5, alpha=0.3)
-    plt.axhline([0.5], linewidth=5, alpha=0.3)
-
     plt.legend(loc='best', prop={'size': 8})
     plt.grid()
     plt.title(outfile.rpartition('/')[2])
@@ -168,19 +145,17 @@ def plotCDFs(xLists, outfile):
     plt.savefig(outfile)
 
 
-def testIt(xputO, xputR, resultFile, alpha, doRTT=True):
+def testIt(xputO, xputR, resultFile, alpha):
     forPlot = {}
 
     if os.path.isfile(resultFile):
         results = json.load(open(resultFile, 'r'))
     else:
-        # print '\r\n CREATING RESULT FILE',resultFile
         results = TH.doTests(xputO, xputR, alpha)
-        # print '\r\n RESULTS FROM DOTESTS',results
         json.dump(results, open(resultFile, 'w'))
 
     forPlot['Original'] = xputO
-    forPlot['Random'] = xputR
+    forPlot['Control'] = xputR
 
     areaTest = results[0]
     ks2ratio = results[1]
