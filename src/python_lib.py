@@ -673,8 +673,9 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, permResultsFolder):
     #     except OSError as error:
     #         print("Removing error", error, interm_pcap.split("/")[-1])
     #
-    # if not os.path.exists(permResultsFolder):
-    #     os.mkdir(permResultsFolder)
+
+    if not os.path.exists(permResultsFolder):
+        os.mkdir(permResultsFolder)
 
     # mv_command = "mv {} {}".format(out_pcap, permResultsFolder)
 
