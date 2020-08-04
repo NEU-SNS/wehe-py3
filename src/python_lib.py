@@ -666,20 +666,18 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, permResultsFolder):
     p = subprocess.check_output(command)
 
     # Remove the intermediate pcaps
-    # interm_pcaps = [in_pcap, interm_pcap]
-    # for interm_pcap in interm_pcaps:
-    #     try:
-    #         os.remove(interm_pcap)
-    #     except OSError as error:
-    #         print("Removing error", error, interm_pcap.split("/")[-1])
-    #
+    interm_pcaps = [in_pcap, interm_pcap]
+    for interm_pcap in interm_pcaps:
+        try:
+            os.remove(interm_pcap)
+        except OSError as error:
+            print("Removing error", error, interm_pcap.split("/")[-1])
 
     if not os.path.exists(permResultsFolder):
         os.mkdir(permResultsFolder)
 
-    # mv_command = "mv {} {}".format(out_pcap, permResultsFolder)
+    mv_command = "mv {} {}".format(out_pcap, permResultsFolder)
 
-    mv_command = "mv {} {} {} {}".format(in_pcap, interm_pcap, out_pcap, permResultsFolder)
     p = subprocess.check_output(mv_command, shell=True)
 
 

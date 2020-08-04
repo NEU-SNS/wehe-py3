@@ -56,3 +56,15 @@
 /replayTraces/port_8080_large
 /replayTraces/port_81
 /replayTraces/port_81_large
+/replayTraces/port_853
+/replayTraces/port_853_large
+/replayTraces/port_993
+/replayTraces/port_993_large
+/replayTraces/port_995
+/replayTraces/port_995_large
+/replayTraces/port_1194
+/replayTraces/port_1194_large
+/replayTraces/port_1723
+/replayTraces/port_1723_large
+/replayTraces/port_8443
+/replayTraces/port_8443_large
