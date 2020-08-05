@@ -1294,6 +1294,7 @@ class SideChannel(object):
         '''
         while True:
             LOG_ACTION(logger, 'Cleaning dangling greenlets: {}'.format(len(self.greenlets)))
+            ip_need_cleaning = []
             for ip in self.greenlets:
                 replay_in_progress_this_ip = False
                 for replayName in list(self.greenlets[ip].keys()):
@@ -1311,8 +1312,12 @@ class SideChannel(object):
                         del self.greenlets[ip][replayName]
                     else:
                         replay_in_progress_this_ip = True
+                        
                 if not replay_in_progress_this_ip:
-                    del self.greenlets[ip]
+                    ip_need_cleaning.append(ip)
+
+            for ip in ip_need_cleaning:
+                del self.greenlets[ip]
 
             LOG_ACTION(logger, 'Done cleaning: {}'.format(len(self.greenlets)), indent=1, action=False)
             gevent.sleep(self.sleep_time)
