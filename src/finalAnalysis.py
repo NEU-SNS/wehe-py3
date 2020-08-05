@@ -105,21 +105,6 @@ def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side="
 
     resultObj = ResultObj(realID, historyCount, testID, replayName, extraString, incomingTime)
 
-    # resultObj.area_test = results['areaTest']
-    # resultObj.ks2_ratio_test = results['ks2ratio']
-    # resultObj.xput_avg_original = results['xputAvg1']
-    # resultObj.xput_avg_test = results['xputAvg2']
-    # resultObj.ks2dVal = results['ks2dVal']
-    # resultObj.ks2pVal = results['ks2pVal']
-    #
-    # plotFile = path + '/' + userID + '/plots/xput_{}_{}_{}_{}_{}_{}_{}_{}.png'. \
-    #     format(userID, side, replayName, historyCount, testID, results['areaTest'], results['ks2dVal'],
-    #            results['ks2pVal'])
-    # try:
-    #     plotCDFs(forPlot, plotFile)
-    # except Exception as e:
-    #     elogger.error('Error when plotting CDF {} {} {}', userID, historyCount, testID)
-
     return resultObj
 
 

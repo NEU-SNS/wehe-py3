@@ -1191,11 +1191,9 @@ class SideChannel(object):
                     pass
 
         # Clean dicts
-        # print '\r\n CLEANING DICTS', self.all_clients[id][replayName], self.all_side_conns[g], self.id2g[ dClient.realID ]
         del self.all_clients[id][replayName]
         del self.all_side_conns[g]
         del self.id2g[dClient.realID]
-        # del self.all_clients[id]
 
         print("SecondarySuccess, exceptions", dClient.secondarySuccess, dClient.exceptions)
 
@@ -1251,12 +1249,6 @@ class SideChannel(object):
 
             print('\n***CHECK ERROR LOGS: {}***'.format(toWrite))
 
-            #             try:
-            #                 self.all_clients[id].exceptions = 'WithExp'
-            #                 toWrite = '\t'.join(self.all_clients[id].get_info())
-            #             except:
-            #                 toWrite = id + '\tNoSuchClient'
-
             errorLogger.info(toWrite)
 
     def add_greenlets(self):
@@ -1303,7 +1295,7 @@ class SideChannel(object):
         while True:
             LOG_ACTION(logger, 'Cleaning dangling greenlets: {}'.format(len(self.greenlets)))
             for ip in self.greenlets:
-
+                replay_in_progress_this_ip = False
                 for replayName in list(self.greenlets[ip].keys()):
 
                     for g in list(self.greenlets[ip][replayName].keys()):
@@ -1317,6 +1309,10 @@ class SideChannel(object):
 
                     if len(self.greenlets[ip][replayName]) == 0:
                         del self.greenlets[ip][replayName]
+                    else:
+                        replay_in_progress_this_ip = True
+                if not replay_in_progress_this_ip:
+                    del self.greenlets[ip]
 
             LOG_ACTION(logger, 'Done cleaning: {}'.format(len(self.greenlets)), indent=1, action=False)
             gevent.sleep(self.sleep_time)

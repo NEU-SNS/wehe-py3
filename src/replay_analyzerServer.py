@@ -496,7 +496,6 @@ def processResult(results):
     return outres
 
 
-# Logic:
 # 1. Analyze using the throughputs sent by client (server creates a client decision file for the GET handle to answer client request)
 # 2. Use the tcpdump trace to perform server side analysis (if tcpdump enabled)
 def analyzer(userID, historyCount, testID, xputBuckets, alpha):
@@ -531,20 +530,20 @@ def loadAndReturnResult(userID, historyCount, testID, args):
     resultsFolder = Configs().get('tmpResultsFolder')
 
     resultFile = (resultsFolder + userID + '/decisions/' + 'results_{}_{}_{}_{}.json').format(userID, 'Client',
-                                                                                             historyCount, testID)
+                                                                                              historyCount, testID)
 
     replayInfoFile = (resultsFolder + userID + '/replayInfo/' + 'replayInfo_{}_{}_{}.json').format(userID,
-                                                                                                  historyCount,
-                                                                                                  testID)
+                                                                                                   historyCount,
+                                                                                                   testID)
     originalReplayInfoFile = (resultsFolder + userID + '/replayInfo/' + 'replayInfo_{}_{}_{}.json').format(userID,
-                                                                                                  historyCount,
-                                                                                                  0)
+                                                                                                           historyCount,
+                                                                                                           0)
     clientXputFile = (resultsFolder + userID + '/clientXputs/' + 'Xput_{}_{}_{}.json').format(userID,
-                                                                                             historyCount,
-                                                                                             testID)
+                                                                                              historyCount,
+                                                                                              testID)
     clientOriginalXputFile = (resultsFolder + userID + '/clientXputs/' + 'Xput_{}_{}_{}.json').format(userID,
-                                                                                                     historyCount,
-                                                                                                     0)
+                                                                                                      historyCount,
+                                                                                                      0)
     # if result file is here, return result
     if os.path.isfile(resultFile) and os.path.isfile(replayInfoFile):
         results = json.load(open(resultFile, 'r'))
@@ -589,7 +588,8 @@ def loadAndReturnResult(userID, historyCount, testID, args):
         # maybe the POST request is missing, try putting the test to the analyzer queue
         if os.path.isfile(replayInfoFile) and os.path.isfile(clientXputFile) and os.path.isfile(
                 clientOriginalXputFile):
-            LOG_ACTION(logger, 'result not ready yet, putting into POSTq :{}, {}, {}'.format(userID, historyCount, testID))
+            LOG_ACTION(logger,
+                       'result not ready yet, putting into POSTq :{}, {}, {}'.format(userID, historyCount, testID))
             POSTq.put((userID, historyCount, testID))
         return json.dumps({'success': False, 'error': 'No result found'})
 
