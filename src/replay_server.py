@@ -605,7 +605,7 @@ class SideChannel(object):
         self.id2g = {}  # self.id2g[realID]      = g
         self.greenlets = {}
         self.sleep_time = 5 * 60
-        self.max_time = 5 * 60
+        self.max_time = 20 * 60
         self.admissionCtrl = {}  # self.admissionCtrl[id][replayName] = testObj
         self.inProgress = {}  # self.inProgress[realID] = (id, replayName)
         if Configs().get('EC2'):
@@ -1312,7 +1312,7 @@ class SideChannel(object):
                         del self.greenlets[ip][replayName]
                     else:
                         replay_in_progress_this_ip = True
-                        
+
                 if not replay_in_progress_this_ip:
                     ip_need_cleaning.append(ip)
 
