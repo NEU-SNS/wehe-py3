@@ -643,7 +643,7 @@ def getSystemStat():
     return cpuPercent, memPercent, diskPercent, upLoad
 
 
-def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, permResultsFolder):
+def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, realID, permResultsFolder):
     out_pcap = in_pcap.replace('.pcap', '_out.pcap')
     # If there is no content modification, we store only packet headers (first 128 bytes)
     interm_pcap = in_pcap.replace('.pcap', '_interm.pcap')
@@ -675,8 +675,14 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, permResultsFolder):
 
     if not os.path.exists(permResultsFolder):
         os.mkdir(permResultsFolder)
+    clientFolder = "{}/{}/".format(permResultsFolder, realID)
+    if not os.path.exists(clientFolder):
+        os.mkdir(clientFolder)
+    tcpdumpFolder = "{}/{}/".format(clientFolder, "tcpdumpsResults")
+    if not os.path.exists(tcpdumpFolder):
+        os.mkdir(tcpdumpFolder)
 
-    mv_command = "mv {} {}".format(out_pcap, permResultsFolder)
+    mv_command = "mv {} {}".format(out_pcap, tcpdumpFolder)
 
     p = subprocess.check_output(mv_command, shell=True)
 
