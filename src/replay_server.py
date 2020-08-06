@@ -39,6 +39,8 @@ To kill the server:
 
 import gevent.monkey
 import time
+import tracemalloc
+import linecache
 
 gevent.monkey.patch_all()
 from multiprocessing_logging import install_mp_handler
@@ -84,6 +86,30 @@ def timeout(time):
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
 
 
+def display_top(snapshot, key_type='lineno', limit=10):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+
+    print("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        print("#%s: %s:%s: %.1f KiB"
+              % (index, frame.filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    %s' % line)
+
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: %.1f KiB" % (total / 1024))
+
+
 def raise_timeout(signum, frame):
     raise Exception("Timeout")
 
@@ -99,6 +125,27 @@ def get_anonymizedIP(ip):
         anonymizedIP = ip
 
     return anonymizedIP
+
+
+def get_size(obj, seen=None):
+    """Recursively finds size of objects"""
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    # Important mark as seen *before* entering recursion to gracefully handle
+    # self-referential objects
+    seen.add(obj_id)
+    if isinstance(obj, dict):
+        size += sum([get_size(v, seen) for v in obj.values()])
+        size += sum([get_size(k, seen) for k in obj.keys()])
+    elif hasattr(obj, '__dict__'):
+        size += get_size(obj.__dict__, seen)
+    elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
+        size += sum([get_size(i, seen) for i in obj])
+    return size
 
 
 class TestObject(object):
@@ -608,7 +655,7 @@ class SideChannel(object):
         self.all_side_conns = {}  # self.all_side_conns[g] = (id, replayName)
         self.id2g = {}  # self.id2g[realID]      = g
         self.greenlets = {}
-        self.sleep_time = 2 * 60
+        self.sleep_time = 5 * 60
         self.max_time = 5 * 60
         self.admissionCtrl = {}  # self.admissionCtrl[id][replayName] = testObj
         self.inProgress = {}  # self.inProgress[realID] = (id, replayName)
@@ -633,7 +680,7 @@ class SideChannel(object):
         self.mappings = mappings  # [mapping, ...] where each mapping belongs to one UDPServer
 
         gevent.Greenlet.spawn(self.notify_clients)
-        gevent.Greenlet.spawn(self.replay_cleaner)
+        # gevent.Greenlet.spawn(self.replay_cleaner)
         gevent.Greenlet.spawn(self.add_greenlets)
         gevent.Greenlet.spawn(self.greenlet_cleaner)
         gevent.Greenlet.spawn(self.replay_logger, Configs().get('replayLog'))
@@ -1315,7 +1362,9 @@ class SideChannel(object):
                 del self.Qs["udp"][key]
 
             self.replays_since_last_cleaning = []
-            LOG_ACTION(logger, 'Done cleaning: remaining total {}, remaining tcp {}, udp {}'.format(len(self.Qs["tcp"]), self.Qs["tcp"].keys(), self.Qs["udp"].keys()), indent=1, action=False)
+            LOG_ACTION(logger, 'Done cleaning: remaining total {}, remaining replays {}, Qs size {}'.format(len(self.Qs["tcp"]), self.Qs["tcp"].keys(), get_size(self.Qs)), indent=1, action=False)
+            snapshot = tracemalloc.take_snapshot()
+            display_top(snapshot)
             gevent.sleep(self.sleep_time)
 
     def greenlet_cleaner(self):
@@ -1644,9 +1693,10 @@ def load_server_replay(folder, Qs, LUT, getLUT, allUDPservers, udpSenderCounts, 
     if not pickle_file:
         return
 
-    Q, tmpLUT, tmpgetLUT, udpServers, tcpServerPorts, replayName = pickle.load(open(pickle_file, 'br'))
-    LOG_ACTION(logger, 'Loading for: ' + folder, pickle_file, indent=1, action=False)
+    with open(pickle_file, 'br') as server_pickle:
+        Q, tmpLUT, tmpgetLUT, udpServers, tcpServerPorts, replayName = pickle.load(server_pickle)
 
+    LOG_ACTION(logger, 'Loading for: ' + folder, pickle_file, indent=1, action=False)
 
     Qs['tcp'][replayName] = Q['tcp']
     Qs['udp'][replayName] = Q['udp']
@@ -1759,7 +1809,7 @@ def run(*args):
     
     mappings:  Hold udpServers' client mapping and passed to SideChannel for cleaning
     '''
-
+    tracemalloc.start()
     PRINT_ACTION('Reading configs and args', 0)
     configs = Configs()
     configs.set('sidechannel_port', 55555)
