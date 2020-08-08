@@ -626,7 +626,10 @@ class Instance(object):
         }
 
     def getIP(self, machineName):
-        ip = socket.gethostbyname(self.ips[machineName])
+        try:
+            ip = socket.gethostbyname(self.ips[machineName])
+        except KeyError:
+            ip = socket.gethostbyname(machineName)
         return ip
 
 
