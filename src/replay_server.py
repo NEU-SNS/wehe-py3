@@ -590,15 +590,13 @@ class UDPServer(object):
         '''
         Sends a queue of UDP packets to client socket
         '''
+        udp_test_timeout = 45
         # 1-Register greenlet
         self.greenlets_q.put((gevent.getcurrent(), id, replayName, 'udp', str(self.instance)))
         clientPort = str(client_address[1]).zfill(5)
 
         # 2-Let client know the start of new send_Q
         self.notify_q.put((id, replayName, clientPort, 'STARTED'))
-
-        # TODO check whether UDP Server Side changes need to be made on this replay
-        # If so, get which packet number it is
 
         # 3- Start sending
         for udp_set in Q:
@@ -607,6 +605,10 @@ class UDPServer(object):
 
             with self.send_lock:
                 self.server.socket.sendto(bytes.fromhex(udp_set.payload), client_address)
+
+            time_progress = time.time() - time_origin
+            if time_progress > udp_test_timeout:
+                break
 
             if DEBUG == 2: print('\tsent:', udp_set.payload, 'to', client_address)
             if DEBUG == 3: print('\tsent:', len(udp_set.payload), 'to', client_address)
