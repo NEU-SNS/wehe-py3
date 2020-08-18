@@ -66,7 +66,7 @@
 /replayTraces/port_995_large
 /replayTraces/port_1194
 /replayTraces/port_1194_large
-/replayTraces/port_1723
-/replayTraces/port_1723_large
+/replayTraces/port_1701
+/replayTraces/port_1701_large
 /replayTraces/port_8443
 /replayTraces/port_8443_large
