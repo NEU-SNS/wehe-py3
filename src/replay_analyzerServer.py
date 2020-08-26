@@ -547,9 +547,9 @@ def loadAndReturnResult(userID, historyCount, testID, args):
     # if result file is here, return result
     if os.path.isfile(resultFile) and os.path.isfile(replayInfoFile):
         with open(resultFile, 'r') as readFile:
-            results = json.load(readFile, 'r')
+            results = json.load(readFile)
         with open(replayInfoFile, 'r') as readFile:
-            info = json.load(readFile, 'r')
+            info = json.load(readFile)
 
         realID = info[2]
         replayName = info[4]
