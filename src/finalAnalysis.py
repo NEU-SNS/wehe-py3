@@ -134,10 +134,12 @@ def testIt(xputO, xputR, resultFile, alpha):
     forPlot = {}
 
     if os.path.isfile(resultFile):
-        results = json.load(open(resultFile, 'r'))
+        with open(resultFile, "r") as readFile:
+            results = json.load(readFile)
     else:
         results = TH.doTests(xputO, xputR, alpha)
-        json.dump(results, open(resultFile, 'w'))
+        with open(resultFile, "w") as writeFile:
+            json.dump(results, writeFile)
 
     forPlot['Original'] = xputO
     forPlot['Control'] = xputR
