@@ -551,9 +551,8 @@ def loadAndReturnResult(userID, historyCount, testID, args):
                 results = json.load(readFile)
             with open(replayInfoFile, 'r') as readFile:
                 info = json.load(readFile)
-        except: # failed at loading the result file
+        except: # failed at loading the result file, re-running analyzer
             POSTq.put((userID, historyCount, testID))
-            return json.dumps({'success': False, 'error': 'No result found'})
 
         realID = info[2]
         replayName = info[4]
@@ -596,7 +595,6 @@ def loadAndReturnResult(userID, historyCount, testID, args):
             LOG_ACTION(logger,
                        'result not ready yet, putting into POSTq :{}, {}, {}'.format(userID, historyCount, testID))
             POSTq.put((userID, historyCount, testID))
-        return json.dumps({'success': False, 'error': 'No result found'})
 
 
 def getHandler(args):
