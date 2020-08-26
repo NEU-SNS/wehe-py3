@@ -551,42 +551,42 @@ def loadAndReturnResult(userID, historyCount, testID, args):
                 results = json.load(readFile)
             with open(replayInfoFile, 'r') as readFile:
                 info = json.load(readFile)
+            realID = info[2]
+            replayName = info[4]
+            extraString = info[5]
+            incomingTime = info[0]
+            # incomingTime = strftime("%Y-%m-%d %H:%M:%S", gmtime())
+            areaTest = str(results[0])
+            ks2ratio = str(results[1])
+            xputAvg1 = str(results[4][2])
+            xputAvg2 = str(results[5][2])
+            ks2dVal = str(results[9])
+            ks2pVal = str(results[10])
+
+            # move related files from tmpResultsFolder to permResultsFolder
+            permResultsFolder = getCurrentResultsFolder() + "/{}/".format(userID)
+            permDecisionFolder = "{}/decisions/".format(permResultsFolder)
+            permClientXputFolder = "{}/clientXputs/".format(permResultsFolder)
+            permReplayInfoFolder = "{}/replayInfo/".format(permResultsFolder)
+            for folder in [permResultsFolder, permDecisionFolder, permClientXputFolder, permReplayInfoFolder]:
+                if not os.path.exists(folder):
+                    os.mkdir(folder)
+            mv_decisions = "mv {} {}".format(resultFile, permDecisionFolder)
+            mv_replayInfos = "mv {} {} {}".format(replayInfoFile, originalReplayInfoFile, permReplayInfoFolder)
+            mv_clientXputs = "mv {} {} {}".format(clientXputFile, clientOriginalXputFile, permClientXputFolder)
+
+            for command in [mv_clientXputs, mv_decisions, mv_replayInfos]:
+                p = subprocess.check_output(command, shell=True)
+
+            return json.dumps({'success': True,
+                               'response': {'replayName': replayName, 'date': incomingTime, 'userID': userID,
+                                            'extraString': extraString, 'historyCount': str(historyCount),
+                                            'testID': str(testID), 'area_test': areaTest, 'ks2_ratio_test': ks2ratio,
+                                            'xput_avg_original': xputAvg1, 'xput_avg_test': xputAvg2,
+                                            'ks2dVal': ks2dVal, 'ks2pVal': ks2pVal}}, cls=myJsonEncoder)
         except: # failed at loading the result file, re-running analyzer
             POSTq.put((userID, historyCount, testID))
 
-        realID = info[2]
-        replayName = info[4]
-        extraString = info[5]
-        incomingTime = info[0]
-        # incomingTime = strftime("%Y-%m-%d %H:%M:%S", gmtime())
-        areaTest = str(results[0])
-        ks2ratio = str(results[1])
-        xputAvg1 = str(results[4][2])
-        xputAvg2 = str(results[5][2])
-        ks2dVal = str(results[9])
-        ks2pVal = str(results[10])
-
-        # move related files from tmpResultsFolder to permResultsFolder
-        permResultsFolder = getCurrentResultsFolder() + "/{}/".format(userID)
-        permDecisionFolder = "{}/decisions/".format(permResultsFolder)
-        permClientXputFolder = "{}/clientXputs/".format(permResultsFolder)
-        permReplayInfoFolder = "{}/replayInfo/".format(permResultsFolder)
-        for folder in [permResultsFolder, permDecisionFolder, permClientXputFolder, permReplayInfoFolder]:
-            if not os.path.exists(folder):
-                os.mkdir(folder)
-        mv_decisions = "mv {} {}".format(resultFile, permDecisionFolder)
-        mv_replayInfos = "mv {} {} {}".format(replayInfoFile, originalReplayInfoFile, permReplayInfoFolder)
-        mv_clientXputs = "mv {} {} {}".format(clientXputFile, clientOriginalXputFile, permClientXputFolder)
-
-        for command in [mv_clientXputs, mv_decisions, mv_replayInfos]:
-            p = subprocess.check_output(command, shell=True)
-
-        return json.dumps({'success': True,
-                           'response': {'replayName': replayName, 'date': incomingTime, 'userID': userID,
-                                        'extraString': extraString, 'historyCount': str(historyCount),
-                                        'testID': str(testID), 'area_test': areaTest, 'ks2_ratio_test': ks2ratio,
-                                        'xput_avg_original': xputAvg1, 'xput_avg_test': xputAvg2,
-                                        'ks2dVal': ks2dVal, 'ks2pVal': ks2pVal}}, cls=myJsonEncoder)
     else:
         # else if the clientXputs and replayInfo files (but not the result file) exist
         # maybe the POST request is missing, try putting the test to the analyzer queue

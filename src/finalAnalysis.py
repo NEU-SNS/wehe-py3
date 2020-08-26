@@ -133,13 +133,9 @@ def plotCDFs(xLists, outfile):
 def testIt(xputO, xputR, resultFile, alpha):
     forPlot = {}
 
-    if os.path.isfile(resultFile):
-        with open(resultFile, "r") as readFile:
-            results = json.load(readFile)
-    else:
-        results = TH.doTests(xputO, xputR, alpha)
-        with open(resultFile, "w") as writeFile:
-            json.dump(results, writeFile)
+    results = TH.doTests(xputO, xputR, alpha)
+    with open(resultFile, "w") as writeFile:
+        json.dump(results, writeFile)
 
     forPlot['Original'] = xputO
     forPlot['Control'] = xputR
