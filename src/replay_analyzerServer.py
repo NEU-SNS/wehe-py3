@@ -546,10 +546,14 @@ def loadAndReturnResult(userID, historyCount, testID, args):
                                                                                                       0)
     # if result file is here, return result
     if os.path.isfile(resultFile) and os.path.isfile(replayInfoFile):
-        with open(resultFile, 'r') as readFile:
-            results = json.load(readFile)
-        with open(replayInfoFile, 'r') as readFile:
-            info = json.load(readFile)
+        try:
+            with open(resultFile, 'r') as readFile:
+                results = json.load(readFile)
+            with open(replayInfoFile, 'r') as readFile:
+                info = json.load(readFile)
+        except: # failed at loading the result file
+            POSTq.put((userID, historyCount, testID))
+            return json.dumps({'success': False, 'error': 'No result found'})
 
         realID = info[2]
         replayName = info[4]
