@@ -285,7 +285,7 @@ def sampleKS2(list1, list2, greater=True, alpha=0.95, sub=0.5, r=100):
     dVal_avg = numpy.average([x[0] for x in results])
     pVal_avg = numpy.average([x[1] for x in results])
 
-    return dVal_avg, pVal_avg, accept / r, results
+    return dVal_avg, pVal_avg, accept / r
 
 
 def doTests(list1, list2, alpha=0.95):
@@ -309,79 +309,17 @@ def doTests(list1, list2, alpha=0.95):
     greater = True
     if ks2pVal < (1 - alpha):
         greater = False
-    [dVal_avg, pVal_avg, ks2AcceptRatio, KS2results] = sampleKS2(list1, list2, greater, alpha=alpha)
+    [dVal_avg, pVal_avg, ks2AcceptRatio] = sampleKS2(list1, list2, greater, alpha=alpha)
 
     return [areaOvar, ks2AcceptRatio, area, err,
             (xputMax1, xputMin1, xputAvg1, xputMed1, xputStd1),
             (xputMax2, xputMin2, xputAvg2, xputMed2, xputStd2),
-            xputMin, dVal_avg, pVal_avg, ks2dVal, ks2pVal, KS2results]
+            xputMin, dVal_avg, pVal_avg, ks2dVal, ks2pVal]
 
 
 def main():
     adjustedXput(sys.argv[1], 0.25)
     sys.exit()
-
-    # configs = Configs()
-    # configs.set('xputInterval', 0.25)
-    # configs.read_args(sys.argv)
-    # configs.check_for(['serverIP'])
-    #
-    # print 'xputInterval:', configs.get('xputInterval')
-    #
-    # PRINT_ACTION('Checking tshark version', 0)
-    # checkTsharkVersion('1.12')
-    #
-    # font = {'family' : 'arial', 'weight' : 'bold', 'size'   : 22}
-    # matplotlib.rc('font', **font)
-    # f, (ax1, ax2) = plt.subplots(1, 2, sharey=True)
-    #
-    # xputs = {}
-    # rtts  = {}
-    #
-    # for pcap in sys.argv[2:]:
-    #
-    #     print '\tParsing:', pcap
-    #     xput, end    = xputTshark(pcap, configs.get('xputBuckets'))
-    #     rtt          = rttTshark_TCP(pcap, serverIP=configs.get('serverIP'))
-    #     xputX, xputY = list2CDF(xput)
-    #     rttX, rttY   = list2CDF(rtt)
-    #
-    #     xputs[pcap]  = xput
-    #     rtts[pcap]   = rtt
-    #
-    #     ax1.plot(xputX, xputY, label=pcap, linewidth=4)
-    #     ax2.plot(rttX, rttY, label=pcap, linewidth=4)
-    #
-    # for i in range(len(xputs)):
-    #     for j in range(i+1, len(xputs)):
-    #         k1 = xputs.keys()[i]
-    #         k2 = xputs.keys()[j]
-    #
-    #         xput1 = xputs[ k1 ]
-    #         xput2 = xputs[ k2 ]
-    #
-    #         rtt1 = rtts[ k1 ]
-    #         rtt2 = rtts[ k2 ]
-    #
-    #         print '\n\tDoing tests for:', k1, k2
-    #         print '\t\tXput:\t', doTests(xput1, xput2)[:-1]
-    #         print '\t\tRTT:\t', doTests(rtt1, rtt2)[:-1]
-    #
-    # ax1.set_title('Xput')
-    # ax1.set_xlabel('xput (Mbits/sec)')
-    # plt.setp(ax1.get_xticklabels(), rotation=45)
-    # ax1.grid(True)
-    #
-    # ax2.set_title('RTT (TCP -- server2client)')
-    # ax2.grid(True)
-    # plt.setp(ax2.get_xticklabels(), rotation=45)
-    #
-    # ax2.set_xscale('log')
-    #
-    # plt.legend(loc='lower right')
-    # plt.suptitle('xputInterval='+str(configs.get('xputInterval'))+'secs')
-    # plt.show()
-    #
 
 
 if __name__ == "__main__":
