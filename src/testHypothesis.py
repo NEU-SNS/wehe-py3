@@ -306,13 +306,10 @@ def doTests(list1, list2, alpha=0.95):
     xputMin = min(list1 + list2)
     areaOvar = float(area) / min(xputMax1, xputMax2)
     (ks2dVal, ks2pVal) = ks_2samp(list1, list2)
-    # If ks2pVal > 1 - alpha, then we check how many samples are greater than 1 - alpha
-    # Elif ks2pVal < 1 - alpha, then we check how many samples are smaller than 1 - alpha
     greater = True
     if ks2pVal < (1 - alpha):
         greater = False
     [dVal_avg, pVal_avg, ks2AcceptRatio, KS2results] = sampleKS2(list1, list2, greater, alpha=alpha)
-    # ks2AcceptRatio 95,  we trust the original ks2 result
 
     return [areaOvar, ks2AcceptRatio, area, err,
             (xputMax1, xputMin1, xputAvg1, xputMed1, xputStd1),
