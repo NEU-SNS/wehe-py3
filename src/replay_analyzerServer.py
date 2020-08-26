@@ -600,6 +600,7 @@ def loadAndReturnResult(userID, historyCount, testID):
             LOG_ACTION(logger,
                        'result not ready yet, putting into POSTq :{}, {}, {}'.format(userID, historyCount, testID))
             POSTq.put((userID, historyCount, testID))
+            return json.dumps({'success': False, 'error': 'No result found'})
 
 
 def getHandler(args):
