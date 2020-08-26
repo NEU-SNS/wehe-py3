@@ -299,10 +299,11 @@ def doTests(list1, list2, alpha=0.95):
     max(list1), min(list1), numpy.average(list1), numpy.median(list1), numpy.std(list1))
     (xputMax2, xputMin2, xputAvg2, xputMed2, xputStd2) = (
     max(list2), min(list2), numpy.average(list2), numpy.median(list2), numpy.std(list2))
-    # diffFunc           = lambda x: abs(f1(x)-f2(x))
+    area = xputAvg2 - xputAvg1
+    # this essentially computes the difference between averages
     # f1 is original and f2 is the random replay
-    diffFunc = lambda x: f2(x) - f1(x)
-    (area, err) = integrate.quad(diffFunc, 0.001, 1, limit=1000)
+    # diffFunc = lambda x: f2(x) - f1(x)
+    # (area, err) = integrate.quad(diffFunc, 0.001, 1, limit=1000)
     xputMin = min(list1 + list2)
     areaOvar = float(area) / min(xputMax1, xputMax2)
     (ks2dVal, ks2pVal) = ks_2samp(list1, list2)
@@ -311,7 +312,7 @@ def doTests(list1, list2, alpha=0.95):
         greater = False
     [dVal_avg, pVal_avg, ks2AcceptRatio] = sampleKS2(list1, list2, greater, alpha=alpha)
 
-    return [areaOvar, ks2AcceptRatio, area, err,
+    return [areaOvar, ks2AcceptRatio, area, 0,
             (xputMax1, xputMin1, xputAvg1, xputMed1, xputStd1),
             (xputMax2, xputMin2, xputAvg2, xputMed2, xputStd2),
             xputMin, dVal_avg, pVal_avg, ks2dVal, ks2pVal]
