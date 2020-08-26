@@ -233,11 +233,11 @@ class ClientObj(object):
         # The 16th element is used to indicate whether the user has alerted ARCEP, False by default,
         # changed to true by the analyzer when the client alerts
         # The 17th element is the client app verison
-        return json.dump([self.incomingTime, self.realID, anonymizedIP, anonymizedIP, self.replayName, self.extraString,
+        with open(infoFile, 'w') as writeFile:
+            json.dump([self.incomingTime, self.realID, anonymizedIP, anonymizedIP, self.replayName, self.extraString,
                           self.historyCount, self.testID,
                           self.exceptions, self.success, self.secondarySuccess, self.iperfRate,
-                          time.time() - self.startTime, self.clientTime, self.mobileStats, False, self.clientVersion],
-                         open(infoFile, 'w'))
+                          time.time() - self.startTime, self.clientTime, self.mobileStats, False, self.clientVersion], writeFile)
 
     def get_info(self):
         return list(map(str, [self.incomingTime, self.realID, self.id, self.ip, self.replayName, self.extraString,
@@ -1037,7 +1037,8 @@ class SideChannel(object):
             xputFile = folder + 'Xput_{}_{}_{}.json'.format(realID, historyCount, testID)
 
             try:
-                json.dump((xput, ts), open(xputFile, 'w'))
+                with open(xputFile, 'w') as writeFile:
+                    json.dump((xput, ts), writeFile)
             except Exception as e:
                 print(e)
         '''

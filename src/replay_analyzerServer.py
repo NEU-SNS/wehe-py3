@@ -546,8 +546,10 @@ def loadAndReturnResult(userID, historyCount, testID, args):
                                                                                                       0)
     # if result file is here, return result
     if os.path.isfile(resultFile) and os.path.isfile(replayInfoFile):
-        results = json.load(open(resultFile, 'r'))
-        info = json.load(open(replayInfoFile, 'r'))
+        with open(resultFile, 'r') as readFile:
+            results = json.load(readFile, 'r')
+        with open(replayInfoFile, 'r') as readFile:
+            info = json.load(readFile, 'r')
 
         realID = info[2]
         replayName = info[4]
@@ -569,7 +571,6 @@ def loadAndReturnResult(userID, historyCount, testID, args):
         for folder in [permResultsFolder, permDecisionFolder, permClientXputFolder, permReplayInfoFolder]:
             if not os.path.exists(folder):
                 os.mkdir(folder)
-
         mv_decisions = "mv {} {}".format(resultFile, permDecisionFolder)
         mv_replayInfos = "mv {} {} {}".format(replayInfoFile, originalReplayInfoFile, permReplayInfoFolder)
         mv_clientXputs = "mv {} {} {}".format(clientXputFile, clientOriginalXputFile, permClientXputFolder)
