@@ -62,7 +62,7 @@ class ResultObj(object):
         return dTuple
 
 
-def finalAnalyzer(userID, historyCount, testID, path, xputBuckets, alpha, side="Client"):
+def finalAnalyzer(userID, historyCount, testID, path, alpha, side="Client"):
     replayInfodir = path + '/' + userID + '/replayInfo/'
     regexOriginal = '*_' + str(historyCount) + '_' + str(0) + '.json'
     regexTest = '*_' + str(historyCount) + '_' + str(testID) + '.json'
