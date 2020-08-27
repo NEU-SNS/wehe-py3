@@ -289,21 +289,28 @@ def sampleKS2(list1, list2, greater=True, alpha=0.95, sub=0.5, r=100):
 
 
 def doTests(list1, list2, alpha=0.95):
-    x1, y1 = list2CDF(list1)
-    f1 = interpolate.interp1d(y1, x1)
+    if not list1:
+        list1 = [0] * 10
+    if not list2:
+        list2 = [0] * 10
 
-    x2, y2 = list2CDF(list2)
-    f2 = interpolate.interp1d(y2, x2)
+    # x1, y1 = list2CDF(list1)
+    # f1 = interpolate.interp1d(y1, x1)
+
+    # x2, y2 = list2CDF(list2)
+    # f2 = interpolate.interp1d(y2, x2)
+
+    # this essentially computes the difference between averages
+    # f1 is original and f2 is the random replay
+    # diffFunc = lambda x: f2(x) - f1(x)
+    # (area, err) = integrate.quad(diffFunc, 0.001, 1, limit=1000)
 
     (xputMax1, xputMin1, xputAvg1, xputMed1, xputStd1) = (
     max(list1), min(list1), numpy.average(list1), numpy.median(list1), numpy.std(list1))
     (xputMax2, xputMin2, xputAvg2, xputMed2, xputStd2) = (
     max(list2), min(list2), numpy.average(list2), numpy.median(list2), numpy.std(list2))
     area = xputAvg2 - xputAvg1
-    # this essentially computes the difference between averages
-    # f1 is original and f2 is the random replay
-    # diffFunc = lambda x: f2(x) - f1(x)
-    # (area, err) = integrate.quad(diffFunc, 0.001, 1, limit=1000)
+
     xputMin = min(list1 + list2)
     areaOvar = float(area) / min(xputMax1, xputMax2)
     (ks2dVal, ks2pVal) = ks_2samp(list1, list2)
