@@ -312,7 +312,7 @@ def doTests(list1, list2, alpha=0.95):
     area = xputAvg2 - xputAvg1
 
     xputMin = min(list1 + list2)
-    areaOvar = float(area) / min(xputMax1, xputMax2)
+    areaOvar = float(area) / max(xputAvg1, xputAvg2)
     (ks2dVal, ks2pVal) = ks_2samp(list1, list2)
     greater = True
     if ks2pVal < (1 - alpha):

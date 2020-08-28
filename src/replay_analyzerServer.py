@@ -631,8 +631,8 @@ def getHandler(args):
     RESULT_REQUEST.labels(command).inc()
     if command == 'defaultSetting':
         # Default setting for the client
-        areaThreshold = 0.1
-        ks2Threshold = 0.05
+        areaThreshold = 0.5
+        ks2Threshold = 0.01
         ks2Ratio = 0.95
         return json.dumps({'success': True, 'areaThreshold': str(areaThreshold), 'ks2Threshold': str(ks2Threshold),
                            'ks2Ratio': str(ks2Ratio)}, cls=myJsonEncoder)
