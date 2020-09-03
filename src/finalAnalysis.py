@@ -95,8 +95,8 @@ def finalAnalyzer(userID, historyCount, testID, path, alpha, side="Client"):
     try:
         resultFile = (path + '/' + userID + '/decisions/' + 'results_{}_{}_{}_{}.json').format(userID, side,
                                                                                                historyCount, testID)
-        xputO = [x for x in xputO if x > 0]
-        xputR = [x for x in xputR if x > 0]
+        # xputO = [x for x in xputO if x > 0]
+        # xputR = [x for x in xputR if x > 0]
         # Only use none-zero throughputs for test
         forPlot, results = testIt(xputO, xputR, resultFile, alpha)
     except Exception as e:

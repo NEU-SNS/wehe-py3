@@ -289,9 +289,11 @@ def sampleKS2(list1, list2, greater=True, alpha=0.95, sub=0.5, r=100):
 
 
 def doTests(list1, list2, alpha=0.95):
-    if not list1:
+    list1_nonzero = [x > 0 for x in list1]
+    list2_nonzero = [x > 0 for x in list2]
+    if not list1_nonzero:
         list1 = [0] * 10
-    if not list2:
+    if not list2_nonzero:
         list2 = [0] * 10
 
     # x1, y1 = list2CDF(list1)
