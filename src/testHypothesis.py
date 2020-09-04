@@ -289,11 +289,11 @@ def sampleKS2(list1, list2, greater=True, alpha=0.95, sub=0.5, r=100):
 
 
 def doTests(list1, list2, alpha=0.95):
-    list1 = [x > 0 for x in list1]
-    list2 = [x > 0 for x in list2]
-    if not list1:
+    list1_nonzero = [x for x in list1 if x > 0]
+    list2_nonzero = [x for x in list2 if x > 0]
+    if not list1_nonzero:
         list1 = [0] * 10
-    if not list2:
+    if not list2_nonzero:
         list2 = [0] * 10
 
     # x1, y1 = list2CDF(list1)
@@ -314,8 +314,8 @@ def doTests(list1, list2, alpha=0.95):
     area = xputAvg2 - xputAvg1
 
     xputMin = min(list1 + list2)
-    areaOvar = float(area) / max(xputMax1, xputMax2)
-    (ks2dVal, ks2pVal) = ks_2samp(list1, list2)
+    areaOvar = float(area) / max(xputAvg1, xputAvg2)
+    (ks2dVal, ks2pVal) = ks_2samp(list1_nonzero, list2_nonzero)
     greater = True
     if ks2pVal < (1 - alpha):
         greater = False
