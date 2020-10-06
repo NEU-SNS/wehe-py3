@@ -687,6 +687,14 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, realID, permResultsFo
 
     mv_command = "mv {} {}".format(out_pcap, tcpdumpFolder)
 
+    if os.getenv("SUDO_UID"):
+        uid = int(os.getenv("SUDO_UID"))
+        for root, dirs, files in os.walk(tcpdumpFolder):
+            for dir in dirs:
+                os.chown(os.path.join(root, dir), uid, uid)
+            for file in files:
+                os.chown(os.path.join(root, file), uid, uid)
+
     p = subprocess.check_output(mv_command, shell=True)
 
 

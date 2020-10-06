@@ -585,6 +585,14 @@ def loadAndReturnResult(userID, historyCount, testID):
         for command in [mv_clientXputs, mv_decisions, mv_replayInfos]:
             p = subprocess.check_output(command, shell=True)
 
+        if os.getenv("SUDO_UID"):
+            uid = int(os.getenv("SUDO_UID"))
+            for root, dirs, files in os.walk(permResultsFolder):
+                for dir in dirs:
+                    os.chown(os.path.join(root, dir), uid, uid)
+                for file in files:
+                    os.chown(os.path.join(root, file), uid, uid)
+
         return json.dumps({'success': True,
                             'response': {'replayName': replayName, 'date': incomingTime, 'userID': userID,
                                         'extraString': extraString, 'historyCount': str(historyCount),
