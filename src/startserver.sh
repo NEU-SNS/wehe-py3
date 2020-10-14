@@ -26,4 +26,4 @@ python3 replay_server.py \
 python3 replay_analyzerServer.py \
   --ConfigFile=configs.cfg \
   --original_ports=True \
-  --certs-folders=/wehe/ssl/ \
+  --certs-folders=/wehe/ssl/
