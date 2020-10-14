@@ -13,14 +13,8 @@ python3 certGenerator.py \
    --root_pass=wehepower2HjBqmhqF4
 
 # Now start two servers.
-# The replay analyzer
-python3 replay_analyzerServer.py \
-  --ConfigFile=configs.cfg \
-  --original_ports=True \
-  --certs-folders=/wehe/ssl/ \
-  &
 
-# The replay server
+# The replay server in background
 python3 replay_server.py \
   --ConfigFile=configs.cfg \
   --original_ports=True \
@@ -28,5 +22,8 @@ python3 replay_server.py \
   --tcpdumpInt=${INTERFACE} \
   &
 
-# Wait for both servers to terminate.
-wait
+# The replay analyzer
+python3 replay_analyzerServer.py \
+  --ConfigFile=configs.cfg \
+  --original_ports=True \
+  --certs-folders=/wehe/ssl/ \
