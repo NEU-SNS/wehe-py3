@@ -70,3 +70,7 @@
 /replayTraces/port_1701_large
 /replayTraces/port_8443
 /replayTraces/port_8443_large
+/replayTraces/Amazon_11252020
+/replayTraces/AmazonRandom_11252020
+/replayTraces/Salto_11252020
+/replayTraces/SaltoRandom_11252020
