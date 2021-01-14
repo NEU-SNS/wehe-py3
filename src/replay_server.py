@@ -1220,18 +1220,6 @@ class SideChannel(object):
             dClient.historyCount,
         ), indent=2, action=False)
 
-        # Stop tcpdump
-        LOG_ACTION(logger,
-                   'Stopping tcpdump for: id: {}, historyCount: {}'.format(dClient.realID, dClient.historyCount),
-                   indent=2, action=False)
-        tcpdumpResult = dClient.dump.stop()
-        LOG_ACTION(logger, 'tcpdumpResult: {}'.format(tcpdumpResult), indent=3, action=False)
-        # try:
-        #     self.logger_q.put('\t'.join(dClient.get_info() + tcpdumpResult))
-        # except:
-        #     pass
-
-        # schedule greenlet to be removed
         self.greenlets_q.put((None, id, replayName, 'remove', None))
 
         # Clean UDP mappings (populated in UDPserver.handle)
@@ -1247,7 +1235,12 @@ class SideChannel(object):
         del self.all_side_conns[g]
         del self.id2g[dClient.realID]
 
-        print("SecondarySuccess, exceptions", dClient.secondarySuccess, dClient.exceptions)
+        # Stop tcpdump
+        LOG_ACTION(logger,
+                   'Stopping tcpdump for: id: {}, historyCount: {}'.format(dClient.realID, dClient.historyCount),
+                   indent=2, action=False)
+        tcpdumpResult = dClient.dump.stop()
+        LOG_ACTION(logger, 'tcpdumpResult: {}'.format(tcpdumpResult), indent=3, action=False)
 
         # Create _out.pcap (only if the replay was successful and no content modification)
         if dClient.secondarySuccess:
