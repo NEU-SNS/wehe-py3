@@ -65,6 +65,7 @@ logger = logging.getLogger('replay_server')
 # Prometheus metrics
 REPLAY_COUNT = Counter("replay_count_total", "Total Number of Individual Replays", ['name'])
 REPLAY_ERROR_COUNT = Counter("replay_erros_total", "Total Number of Errors on the Sidechannel", ['type'])
+ATTEMPTED_REPLAY_COUNT = Counter("attemped_replay_count_total", "Total Number of Connections made to the Sidechannel")
 CERT_EXPIRATION_DAYS = Gauge('days_until_cert_expiration', 'Days until the self-signed certificate expires')
 DISK_USAGE = Gauge('disk_usage', '% of disk used')
 
@@ -750,7 +751,8 @@ class SideChannel(object):
             8-  Receive results request and send back results
             9-  Set secondarySuccess to True and close connection
         '''
-        # 0- Get basic info: g, clientIP, incomingTime
+        # 0- Get basic info: g, clientIP, incomingTime, increase the counter for the number of attempted replay
+        ATTEMPTED_REPLAY_COUNT.inc()
         g = gevent.getcurrent()
         clientIP = address[0]
         # incomingTime = time.strftime('%Y-%b-%d-%H-%M-%S', time.gmtime())
