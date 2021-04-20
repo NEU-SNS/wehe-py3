@@ -74,3 +74,5 @@
 /replayTraces/AmazonRandom_11252020
 /replayTraces/Salto_11252020
 /replayTraces/SaltoRandom_11252020
+/replayTraces/TwitterVideo_04192021
+/replayTraces/TwitterVideoRandom_04192021
