@@ -736,7 +736,11 @@ class tcpdump(object):
             command += ['host', host]
 
         self._p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
+        
+        '''
+                    Wait for tcpdump process to start listening for traffic by invoking self._p.stderr.readline()
+                '''
+        self._p.stderr.readline()
         self._running = True
 
         return ' '.join(command)
