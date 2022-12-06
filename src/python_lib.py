@@ -20,7 +20,7 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib
+    random, string, logging.handlers, socket, psutil, hashlib, scapy.all
 
 import multiprocessing, threading, logging, sys, traceback
 
@@ -657,12 +657,19 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, realID, permResultsFo
     command = "tcpdump -r {} -w {} {}".format(in_pcap, interm_pcap, filter)
     p = subprocess.check_output(command, shell=True)
 
+    # remove payload data from pcap file
+    pkts = scapy.all.rdpcap(interm_pcap)
+    for pkt in pkts:
+        pkt.load = ''
+    scapy.all.wrpcap(interm_pcap, pkts)
+
+    # anonymize the IP and update checksums
     if ":" in anonymizedIP:
-        command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
+        command = ["tcprewrite", "--fixcsum", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
                    "--infile={}".format(interm_pcap),
                    "--outfile={}".format(out_pcap)]
     else:
-        command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat={}:{}".format(clientIP, anonymizedIP),
+        command = ["tcprewrite", "--fixcsum", "--pnat={}:{}".format(clientIP, anonymizedIP),
                    "--infile={}".format(interm_pcap),
                    "--outfile={}".format(out_pcap)]
 
