@@ -20,10 +20,12 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib
+    random, string, logging.handlers, socket, psutil, hashlib, scapy.all
 
 import multiprocessing, threading, logging, sys, traceback
 
+from ipwhois.net import Net
+from ipwhois.asn import IPASN
 
 try:
     import dpkt
@@ -622,7 +624,7 @@ class Instance(object):
         self.ips = {
             'yourInstanceName': 'yourInstanceAddress',
             'wehe': 'wehe3.meddle.mobi',
-            'local': 'localhost',
+            'local': '127.0.0.1',
         }
 
     def getIP(self, machineName):
@@ -657,12 +659,19 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, realID, permResultsFo
     command = "tcpdump -r {} -w {} {}".format(in_pcap, interm_pcap, filter)
     p = subprocess.check_output(command, shell=True)
 
+    # remove payload data from pcap file
+    pkts = scapy.all.rdpcap(interm_pcap)
+    for pkt in pkts:
+        pkt.load = ''
+    scapy.all.wrpcap(interm_pcap, pkts)
+
+    # anonymize the IP and update checksums
     if ":" in anonymizedIP:
-        command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
+        command = ["tcprewrite", "--fixcsum", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
                    "--infile={}".format(interm_pcap),
                    "--outfile={}".format(out_pcap)]
     else:
-        command = ["tcprewrite", "--mtu=128", "--mtu-trunc", "--pnat={}:{}".format(clientIP, anonymizedIP),
+        command = ["tcprewrite", "--fixcsum", "--pnat={}:{}".format(clientIP, anonymizedIP),
                    "--infile={}".format(interm_pcap),
                    "--outfile={}".format(out_pcap)]
 
@@ -852,3 +861,61 @@ def java_byte_hashcode(s):
             i = i - 256
         hashCode = (31 * hashCode + i) & 0xFFFFFFFF
     return hashCode
+
+
+def get_anonymizedIP(ip):
+    if "." in ip:
+        v4ExceptLast = ip.rsplit('.', 1)[0]
+        anonymizedIP = v4ExceptLast + '.0'
+    elif ":" in ip:
+        v6ExceptLast = ip.rsplit(':', 1)[0]
+        anonymizedIP = v6ExceptLast + ':0000'
+    else:
+        anonymizedIP = ip
+
+    return anonymizedIP
+
+
+def getASN(ip):
+    try:
+        net = Net(ip)
+        obj = IPASN(net)
+        results = obj.lookup()
+        if int(results['asn']):
+            return results['asn'] 
+    except:
+        return "*"
+
+
+def traceroute(serverIP, clientIP, userID, historyCount, testID, serverInfo=""):
+    traceroute = subprocess.Popen(["traceroute", "-m", "2", clientIP], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    ipList = [serverIP]
+    asnList = [getASN(serverIP)]
+    for line in iter(traceroute.stdout.readline, b""):
+        line = line.decode("UTF-8")
+        IP = line.split("  ")
+        if len(IP)>1:
+            if "*" in IP[1]:
+                ipList.append("*")
+                asnList.append("*")
+                continue
+            IP = IP[1].split("(")
+            if len(IP)>1:
+                IP = IP[1].split(")")[0]
+                if IP == clientIP:
+                    IP = get_anonymizedIP(IP)
+                ipList.append(IP)
+                asnList.append(getASN(IP))
+
+    tracerouteInfo = {
+        'src_ip': ipList[0], 'src_asn': asnList[0],
+        'dst_ip': ipList[-1], 'dst_asn': asnList[-1],
+        'hops_ips': ipList, 'hops_asns': asnList,
+        'server_info': serverInfo
+    }
+
+    tracerouteFolder = os.path.join(getCurrentResultsFolder(), userID, "traceroute")
+    os.makedirs(tracerouteFolder, exist_ok=True)
+    #print(f"traceroute saved at: {tracerouteFolder}/traceroute_{userID}_{historyCount}_{testID}.json")
+    with open(f"{tracerouteFolder}/traceroute_{userID}_{historyCount}_{testID}.json", 'w') as outfile:
+        outfile.write(json.dumps(tracerouteInfo))

@@ -57,6 +57,7 @@ import signal
 from contextlib import contextmanager
 from threading import Timer
 from prometheus_client import start_http_server, Summary, Counter, Gauge
+from multiprocessing import Process
 
 DEBUG = 5
 
@@ -113,19 +114,6 @@ def display_top(snapshot, key_type='lineno', limit=10):
 
 def raise_timeout(signum, frame):
     raise Exception("Timeout")
-
-
-def get_anonymizedIP(ip):
-    if "." in ip:
-        v4ExceptLast = ip.rsplit('.', 1)[0]
-        anonymizedIP = v4ExceptLast + '.0'
-    elif ":" in ip:
-        v6ExceptLast = ip.rsplit(':', 1)[0]
-        anonymizedIP = v6ExceptLast + ':0000'
-    else:
-        anonymizedIP = ip
-
-    return anonymizedIP
 
 
 def get_size(obj, seen=None):
@@ -743,6 +731,8 @@ class SideChannel(object):
             2-  Check permission (log and close if no permission granted)
             3a- Receive iperf result
             3b- Receive mobile stats
+            3c- Get server's site info from client [optional]
+            3d- Run traceroute to client
             4-  Start tcpdump
             5a- Send server mapping to client
             5b- Send senderCount to client
@@ -957,6 +947,15 @@ class SideChannel(object):
         data = self.receive_object(connection)
         if data is None: return
 
+        # # 3c- Receive sever site info
+        serverInfo = ""
+        '''
+        # for use only with wehe cmdline clients that implement sending server's site info - uncomment the code in that case
+        serverInfo = self.receive_object(connection)
+        if serverInfo is None: return
+        print("\nServer Info:", serverInfo")
+        '''
+
         data = data.split(';')
 
         if data[0] == 'WillSendMobileStats':
@@ -987,6 +986,22 @@ class SideChannel(object):
             LOG_ACTION(logger, 'Mobile stats for {}: {}'.format(realID, mobileStats), indent=2, action=False)
         elif data[0] == 'NoMobileStats':
             LOG_ACTION(logger, 'No mobile stats for ' + realID, indent=2, action=False)
+
+        # 3d- Run traceroute to client
+        '''
+        Add the server IP in the traceroute information
+        
+        This is not the cleanest way to extract the server IP, but it works.
+        Borrowed method from extracting clientIP: Sometimes the returned IP looks weird and does not comply with either IPv4 nor IPv6 format! e.g. ::ffff:137.194.165.192
+        The below if is to fix this.
+        '''
+        serverIP = connection.getsockname()[0]
+        if ('.' in serverIP) and (':' in serverIP):
+            serverIP = serverIP.rpartition(':')[2]
+        
+        LOG_ACTION(logger, 'Run traceroute for: {}'.format(realID), indent=2, action=False)
+        tracerouteProcess = Process(target=traceroute, args=(serverIP, id, realID, historyCount, testID, serverInfo,))
+        tracerouteProcess.start()
 
         # 4- Start tcpdump
         LOG_ACTION(logger,
