@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./local:/local
+      - ./data:/data
     # All service containers will use the same network and IP, but all ports
     # must be configured on the first service definition.
     ports:
@@ -33,7 +34,7 @@ services:
     - |
       mkdir -p /wehe/ssl; cd /wehe/ssl; openssl genrsa -out ca.key 4096 &&
       openssl req -x509 -subj "/C=US/ST=NY/L=Test/O=Test/CN=localhost" -new -nodes -key ca.key -sha256 -days 1024 -out ca.crt < /dev/null &&
-      cd /wehe && /bin/bash startserver.sh localhost eth0
+      cd /wehe && /bin/bash startserver.sh localhost lo
 
   wehe-client:
     image: local-wehe-server
