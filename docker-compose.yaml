@@ -1,0 +1,54 @@
+version: '3.7'
+services:
+  wehe-server:
+    image: local-wehe-server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./local:/local
+      - ./data:/data
+    # All service containers will use the same network and IP, but all ports
+    # must be configured on the first service definition.
+    ports:
+      - target: 443
+        published: 4430
+        protocol: tcp
+        mode: bridge
+      - target: 80
+        published: 8080
+        protocol: tcp
+        mode: bridge
+      - target: 9090
+        published: 9090
+        protocol: tcp
+        mode: bridge
+    deploy:
+      restart_policy:
+        delay: 5s
+    entrypoint:
+    - /bin/bash
+    command:
+    - -c
+    # Create a private CA for this localhost test.
+    - |
+      mkdir -p /wehe/ssl; cd /wehe/ssl; openssl genrsa -out ca.key 4096 &&
+      openssl req -x509 -subj "/C=US/ST=NY/L=Test/O=Test/CN=localhost" -new -nodes -key ca.key -sha256 -days 1024 -out ca.crt < /dev/null &&
+      cd /wehe && /bin/bash startserver.sh localhost lo
+
+  wehe-client:
+    image: local-wehe-server
+    depends_on:
+     - wehe-server
+    volumes:
+      - ./local:/local
+    # Place the client on the same network as the server for local test.
+    network_mode: "service:wehe-server"
+    entrypoint:
+    - /bin/bash
+    command:
+      - -c
+      # Wait until the server is online before running a test.
+      - |
+        until nc -z localhost 55555 ; do sleep 1; done;
+        python3 replay_client.py --pcap_folder=/replayTraces/SpotifyRandom_01042019 --serverInstance=localhost
