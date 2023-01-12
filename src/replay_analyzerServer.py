@@ -543,6 +543,12 @@ def loadAndReturnResult(userID, historyCount, testID):
     clientOriginalXputFile = (resultsFolder + userID + '/clientXputs/' + 'Xput_{}_{}_{}.json').format(userID,
                                                                                                       historyCount,
                                                                                                       0)
+    tracerouteFile = (resultsFolder + userID + '/traceroute/' + 'traceroute_{}_{}_{}.json').format(userID,
+                                                                                                   historyCount,
+                                                                                                   testID)
+    originalTracerouteFile = (resultsFolder + userID + '/traceroute/' + 'traceroute_{}_{}_{}.json').format(userID,
+                                                                                                   historyCount,
+                                                                                                   0)
     # if result file is here, return result
     if os.path.isfile(resultFile) and os.path.isfile(replayInfoFile):
         try:
@@ -575,14 +581,16 @@ def loadAndReturnResult(userID, historyCount, testID):
         permDecisionFolder = "{}/decisions/".format(permResultsFolder)
         permClientXputFolder = "{}/clientXputs/".format(permResultsFolder)
         permReplayInfoFolder = "{}/replayInfo/".format(permResultsFolder)
-        for folder in [permResultsFolder, permDecisionFolder, permClientXputFolder, permReplayInfoFolder]:
+        permTracerouteFolder = "{}/traceroute/".format(permResultsFolder)
+        for folder in [permResultsFolder, permDecisionFolder, permClientXputFolder, permReplayInfoFolder, permTracerouteFolder]:
             if not os.path.exists(folder):
                 os.mkdir(folder)
         mv_decisions = "mv {} {}".format(resultFile, permDecisionFolder)
         mv_replayInfos = "mv {} {} {}".format(replayInfoFile, originalReplayInfoFile, permReplayInfoFolder)
         mv_clientXputs = "mv {} {} {}".format(clientXputFile, clientOriginalXputFile, permClientXputFolder)
+        mv_traceroutes = "mv {} {} {}".format(tracerouteFile, originalTracerouteFile, permTracerouteFolder)
 
-        for command in [mv_clientXputs, mv_decisions, mv_replayInfos]:
+        for command in [mv_clientXputs, mv_decisions, mv_replayInfos, mv_traceroutes]:
             p = subprocess.check_output(command, shell=True)
 
         if os.getenv("SUDO_UID"):

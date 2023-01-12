@@ -20,10 +20,12 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib, scapy.all
+    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, requests, ipaddress
 
 import multiprocessing, threading, logging, sys, traceback
 
+from ipwhois.net import Net
+from ipwhois.asn import IPASN
 
 try:
     import dpkt
@@ -738,8 +740,8 @@ class tcpdump(object):
         self._p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         '''
-                    Wait for tcpdump process to start listening for traffic by invoking self._p.stderr.readline()
-                '''
+            Wait for tcpdump process to start listening for traffic by invoking self._p.stderr.readline()
+        '''
         self._p.stderr.readline()
         self._running = True
 
@@ -863,3 +865,74 @@ def java_byte_hashcode(s):
             i = i - 256
         hashCode = (31 * hashCode + i) & 0xFFFFFFFF
     return hashCode
+
+
+def get_anonymizedIP(ip):
+    if "." in ip:
+        v4ExceptLast = ip.rsplit('.', 1)[0]
+        anonymizedIP = v4ExceptLast + '.0'
+    elif ":" in ip:
+        v6ExceptLast = ip.rsplit(':', 1)[0]
+        anonymizedIP = v6ExceptLast + ':0000'
+    else:
+        anonymizedIP = ip
+
+    return anonymizedIP
+
+
+############################################
+##### ADDED BY NAL FROM HERE #####
+############################################
+def getASN(ip):
+    try:
+        net = Net(ip)
+        obj = IPASN(net)
+        results = obj.lookup()
+        if int(results['asn']):
+            return results['asn']
+    except:
+        return "*"
+
+
+def get_mlab_hostname(mlab_ip):
+    mlab_hostnames = requests.get('https://siteinfo.mlab-oti.measurementlab.net/v1/sites/hostnames.json').json()
+    mlab_ip = ipaddress.ip_address(mlab_ip)
+    for record in mlab_hostnames:
+        if record['ipv4'] and (ipaddress.ip_address(record['ipv4']) == mlab_ip):
+            return record['hostname']
+        if record['ipv6'] and (ipaddress.ip_address(record['ipv6']) == mlab_ip):
+            return record['hostname']
+    return ""
+
+
+def traceroute(serverIP, clientIP, tracerouteFile):
+    traceroute = subprocess.Popen(["traceroute", "-m", "2", clientIP], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    ipList = [serverIP]
+    asnList = [getASN(serverIP)]
+    for line in iter(traceroute.stdout.readline, b""):
+        line = line.decode("UTF-8")
+        IP = line.split("  ")
+        if len(IP)>1:
+            if "*" in IP[1]:
+                ipList.append("*")
+                asnList.append("*")
+                continue
+            IP = IP[1].split("(")
+            if len(IP)>1:
+                IP = IP[1].split(")")[0]
+                if IP == clientIP:
+                    IP = get_anonymizedIP(IP)
+                ipList.append(IP)
+                asnList.append(getASN(IP))
+
+    tracerouteInfo = {
+        'src_ip': ipList[0], 'src_asn': asnList[0], 'src_hostname': get_mlab_hostname(serverIP),
+        'dst_ip': ipList[-1], 'dst_asn': asnList[-1],
+        'hops_ips': ipList, 'hops_asns': asnList
+    }
+
+    try:
+        with open(tracerouteFile, 'w') as outfile:
+            outfile.write(json.dumps(tracerouteInfo))
+    except Exception as e:
+        print('Fail to write traceroute result', e, tracerouteInfo)
