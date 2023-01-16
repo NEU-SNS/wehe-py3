@@ -5,7 +5,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --yes \
    tcpreplay tshark wireshark scapy netcat
 
 RUN pip3 install future gevent matplotlib multiprocessing_logging mysqlclient \
-  netaddr prometheus_client psutil reverse-geocode reverse-geocoder \
+  netaddr prometheus_client psutil reverse-geocode reverse-geocoder requests js \
   timezonefinder "tornado<6.0.0"
 
 ADD src /wehe

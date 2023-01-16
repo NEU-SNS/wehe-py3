@@ -115,19 +115,6 @@ def raise_timeout(signum, frame):
     raise Exception("Timeout")
 
 
-def get_anonymizedIP(ip):
-    if "." in ip:
-        v4ExceptLast = ip.rsplit('.', 1)[0]
-        anonymizedIP = v4ExceptLast + '.0'
-    elif ":" in ip:
-        v6ExceptLast = ip.rsplit(':', 1)[0]
-        anonymizedIP = v6ExceptLast + ':0000'
-    else:
-        anonymizedIP = ip
-
-    return anonymizedIP
-
-
 def get_size(obj, seen=None):
     """Recursively finds size of objects"""
     size = sys.getsizeof(obj)
@@ -205,6 +192,7 @@ class ClientObj(object):
         self.tcpdumpsFolder = self.targetFolder + 'tcpdumpsResults/'
         self.clientXputFolder = self.targetFolder + 'clientXputs/'
         self.replayInfoFolder = self.targetFolder + 'replayInfo/'
+        self.tracerouteFolder = self.targetFolder + 'traceroute/'
         self.smpacNum = smpacNum
         self.saction = saction
         self.sspec = sspec
@@ -217,6 +205,8 @@ class ClientObj(object):
 
             decisionsFolder = self.targetFolder + 'decisions/'
             os.makedirs(decisionsFolder)
+
+        os.makedirs(self.tracerouteFolder, exist_ok=True)
 
     def setDump(self, dumpName):
         self.dumpName = dumpName
@@ -743,6 +733,7 @@ class SideChannel(object):
             2-  Check permission (log and close if no permission granted)
             3a- Receive iperf result
             3b- Receive mobile stats
+            3c- Run traceroute to client
             4-  Start tcpdump
             5a- Send server mapping to client
             5b- Send senderCount to client
@@ -988,12 +979,31 @@ class SideChannel(object):
         elif data[0] == 'NoMobileStats':
             LOG_ACTION(logger, 'No mobile stats for ' + realID, indent=2, action=False)
 
+        # 3c- Run traceroute to client
+        '''
+        Add the server IP in the traceroute information
+
+        This is not the cleanest way to extract the server IP, but it works.
+        Borrowed method from extracting clientIP: Sometimes the returned IP looks weird and does not comply with either IPv4 nor IPv6 format! e.g. ::ffff:137.194.165.192
+        The below if is to fix this.
+        '''
+        serverIP = connection.getsockname()[0]
+        if ('.' in serverIP) and (':' in serverIP):
+            serverIP = serverIP.rpartition(':')[2]
+
+        # resultsFolder = getCurrentResultsFolder()
+        resultsFolder = Configs().get('tmpResultsFolder') + '/' + realID + '/'
+
+        folder = resultsFolder + '/traceroute/'
+        tracerouteFile = folder + 'traceroute_{}_{}_{}.json'.format(realID, historyCount, testID)
+
+        LOG_ACTION(logger, 'Run traceroute for: {}'.format(realID), indent=2, action=False)
+        gevent.Greenlet.spawn(traceroute, serverIP, id, tracerouteFile)
+
         # 4- Start tcpdump
         LOG_ACTION(logger,
                    'Starting tcpdump for: id: {}, historyCount: {}'.format(dClient.realID, dClient.historyCount),
                    indent=2, action=False)
-        # resultsFolder = getCurrentResultsFolder()
-        resultsFolder = Configs().get('tmpResultsFolder') + '/' + realID + '/'
 
         # print '\r\n STARTING TCPDUMP FOR THIS CLIENT'
         command = dClient.dump.start(host=dClient.ip)

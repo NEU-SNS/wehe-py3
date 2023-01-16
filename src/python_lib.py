@@ -20,7 +20,7 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib, scapy.all
+    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, requests, ipaddress, jc
 
 import multiprocessing, threading, logging, sys, traceback
 
@@ -738,8 +738,8 @@ class tcpdump(object):
         self._p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         '''
-                    Wait for tcpdump process to start listening for traffic by invoking self._p.stderr.readline()
-                '''
+            Wait for tcpdump process to start listening for traffic by invoking self._p.stderr.readline()
+        '''
         self._p.stderr.readline()
         self._running = True
 
@@ -863,3 +863,55 @@ def java_byte_hashcode(s):
             i = i - 256
         hashCode = (31 * hashCode + i) & 0xFFFFFFFF
     return hashCode
+
+
+def get_anonymizedIP(ip):
+    ip_address = ipaddress.ip_address(ip)
+
+    if ip_address.version == 4:
+        mask = ipaddress.ip_address('255.255.255.0')  # /24 mask
+        anonymizedIP = str(ipaddress.ip_address(int(ip_address) & int(mask)))
+    elif ip_address.version == 6:
+        mask = ipaddress.ip_address('ffff:ffff:ffff:0000:0000:0000:0000:0000')  # /48
+        anonymizedIP = str(ipaddress.ip_address(int(ip_address) & int(mask)))
+    else:
+        anonymizedIP = ip
+
+    return anonymizedIP
+
+
+############################################
+##### ADDED BY NAL FROM HERE #####
+############################################
+def get_mlab_hostname(mlab_ip):
+    mlab_hostnames = requests.get('https://siteinfo.mlab-oti.measurementlab.net/v2/sites/hostnames.json').json()
+    mlab_ip = ipaddress.ip_address(mlab_ip)
+    for record in mlab_hostnames:
+        if record['ipv4'] and (ipaddress.ip_address(record['ipv4']) == mlab_ip):
+            return record['hostname']
+        if record['ipv6'] and (ipaddress.ip_address(record['ipv6']) == mlab_ip):
+            return record['hostname']
+    return ""
+
+
+def traceroute(serverIP, clientIP, tracerouteFile):
+    traceroute = subprocess.Popen(["traceroute", "-n", clientIP], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    result = jc.parse('traceroute', traceroute.stdout.read().decode("UTF-8"))
+    for hop in result['hops']:
+        for probe in hop['probes']:
+            del probe['annotation']
+            del probe['asn']
+            del probe['name']
+
+    for probe in result['hops'][-1]['probes']:
+        probe['ip'] = get_anonymizedIP(probe['ip'])
+
+    tracerouteInfo = {
+        'time': time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
+        'source_ip': serverIP, 'source_name': get_mlab_hostname(serverIP), 'destination_ip': get_anonymizedIP(clientIP),
+        'hops': result['hops']
+    }
+
+    with open(tracerouteFile, 'w') as outfile:
+        outfile.write(json.dumps(tracerouteInfo))
