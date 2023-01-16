@@ -115,19 +115,6 @@ def raise_timeout(signum, frame):
     raise Exception("Timeout")
 
 
-def get_anonymizedIP(ip):
-    if "." in ip:
-        v4ExceptLast = ip.rsplit('.', 1)[0]
-        anonymizedIP = v4ExceptLast + '.0'
-    elif ":" in ip:
-        v6ExceptLast = ip.rsplit(':', 1)[0]
-        anonymizedIP = v6ExceptLast + ':0000'
-    else:
-        anonymizedIP = ip
-
-    return anonymizedIP
-
-
 def get_size(obj, seen=None):
     """Recursively finds size of objects"""
     size = sys.getsizeof(obj)
@@ -1010,7 +997,7 @@ class SideChannel(object):
         tracerouteFile = folder + 'traceroute_{}_{}_{}.json'.format(realID, historyCount, testID)
 
         LOG_ACTION(logger, 'Run traceroute for: {}'.format(realID), indent=2, action=False)
-        gevent.Greenlet.spawn(traceroute, serverIP, id, tracerouteFile)#id, realID, historyCount, testID)
+        gevent.Greenlet.spawn(traceroute, serverIP, id, tracerouteFile)
 
         # 4- Start tcpdump
         LOG_ACTION(logger,
