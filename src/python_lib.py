@@ -884,7 +884,7 @@ def get_anonymizedIP(ip):
 ##### ADDED BY NAL FROM HERE #####
 ############################################
 def get_mlab_hostname(mlab_ip):
-    mlab_hostnames = requests.get('https://siteinfo.mlab-oti.measurementlab.net/v1/sites/hostnames.json').json()
+    mlab_hostnames = requests.get('https://siteinfo.mlab-oti.measurementlab.net/v2/sites/hostnames.json').json()
     mlab_ip = ipaddress.ip_address(mlab_ip)
     for record in mlab_hostnames:
         if record['ipv4'] and (ipaddress.ip_address(record['ipv4']) == mlab_ip):
