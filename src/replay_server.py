@@ -202,10 +202,11 @@ class ClientObj(object):
             os.makedirs(self.tcpdumpsFolder)
             os.makedirs(self.clientXputFolder)
             os.makedirs(self.replayInfoFolder)
-            os.makedirs(self.tracerouteFolder)
 
             decisionsFolder = self.targetFolder + 'decisions/'
             os.makedirs(decisionsFolder)
+
+        os.makedirs(self.tracerouteFolder, exist_ok=True)
 
     def setDump(self, dumpName):
         self.dumpName = dumpName
