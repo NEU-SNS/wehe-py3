@@ -2,11 +2,11 @@ FROM ubuntu:20.04
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --yes \
    apt-utils gcc libc-dev libmysqlclient-dev python3 python3-pip tcpdump \
-   tcpreplay tshark wireshark scapy netcat
+   tcpreplay tshark wireshark scapy netcat traceroute
 
 RUN pip3 install future gevent matplotlib multiprocessing_logging mysqlclient \
-  netaddr prometheus_client psutil reverse-geocode reverse-geocoder requests js \
-  timezonefinder "tornado<6.0.0"
+  netaddr prometheus_client psutil reverse-geocode reverse-geocoder \
+  timezonefinder "tornado<6.0.0" requests jc
 
 ADD src /wehe
 ADD replayTraces /replayTraces
