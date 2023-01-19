@@ -1055,6 +1055,10 @@ class SideChannel(object):
                     json.dump((xput, ts), writeFile)
             except Exception as e:
                 print(e)
+
+        # make sure traceroute process is done before exiting
+        p_traceroute.join()
+
         '''
         It is very important to send this confirmation. Otherwise client exits early and can
         cause permission issue when replaying back to back!
@@ -1099,8 +1103,6 @@ class SideChannel(object):
         except Exception as e:
             print('Fail to write repayInfo into the replay info file', e, replayInfoFile)
 
-        # make sure traceroute process is done before exiting
-        p_traceroute.join()
 
         connection.shutdown(gevent.socket.SHUT_RDWR)
         connection.close()
