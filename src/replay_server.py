@@ -998,7 +998,7 @@ class SideChannel(object):
         tracerouteFile = folder + 'traceroute_{}_{}_{}.json'.format(realID, historyCount, testID)
 
         LOG_ACTION(logger, 'Run traceroute for: {}'.format(realID), indent=2, action=False)
-        gevent.Greenlet.spawn(traceroute, serverIP, id, tracerouteFile)
+        p_traceroute = gevent.Greenlet.spawn(traceroute, serverIP, id, tracerouteFile)
 
         # 4- Start tcpdump
         LOG_ACTION(logger,
@@ -1098,6 +1098,9 @@ class SideChannel(object):
             dClient.create_info_json(replayInfoFile)
         except Exception as e:
             print('Fail to write repayInfo into the replay info file', e, replayInfoFile)
+
+        # make sure traceroute process is done before exiting
+        p_traceroute.join()
 
         connection.shutdown(gevent.socket.SHUT_RDWR)
         connection.close()
