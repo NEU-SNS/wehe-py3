@@ -895,7 +895,7 @@ def get_mlab_hostname(mlab_ip):
 
 
 def traceroute(serverIP, clientIP, tracerouteFile):
-    traceroute = subprocess.Popen(["traceroute", "-n", clientIP], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    traceroute = subprocess.Popen(["traceroute", "-w", "0.5", "-n", clientIP], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     result = jc.parse('traceroute', traceroute.stdout.read().decode("UTF-8"))
     for hop in result['hops']:
