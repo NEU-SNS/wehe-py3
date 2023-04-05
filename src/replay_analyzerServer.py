@@ -870,6 +870,7 @@ def main():
     PRINT_ACTION('Configuring paths', 0)
     configs.set('resultsFolder', configs.get('mainPath') + configs.get('resultsFolder'))
     configs.set('analyzerLog', configs.get('logsPath') + configs.get('analyzerLog'))
+    configs.set('errorsLog', configs.get('logsPath') + configs.get('errorsLog'))
 
     PRINT_ACTION('Setting up logging', 0)
     if not os.path.isdir(configs.get('logsPath')):
