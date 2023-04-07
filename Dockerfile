@@ -8,6 +8,9 @@ RUN pip3 install timezonefinder future gevent matplotlib multiprocessing_logging
   netaddr prometheus_client psutil reverse-geocode reverse-geocoder \
   "tornado<6.0.0" requests jc
 
+# Allow user nobody to execute tcpdump, and add CAP_NET_RAW capability to the
+# tcpdump binary.
+RUN chgrp tcpdump /usr/sbin/tcpdump && adduser nobody tcpdump
 RUN setcap cap_net_raw=ep /usr/sbin/tcpdump
 
 ADD src /wehe
