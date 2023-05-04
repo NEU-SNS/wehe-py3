@@ -7,7 +7,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./local:/local
-      - ./data:/data
+      - ./var:/var
+      - ./tmp:/tmp
     # All service containers will use the same network and IP, but all ports
     # must be configured on the first service definition.
     ports:
