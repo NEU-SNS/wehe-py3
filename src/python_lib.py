@@ -650,6 +650,7 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, realID, permResultsFo
     out_pcap = in_pcap.replace('.pcap', '_out.pcap')
     # If there is no content modification, we store only packet headers (first 128 bytes)
     interm_pcap = in_pcap.replace('.pcap', '_interm.pcap')
+    interm2_pcap = in_pcap.replace('.pcap', '_interm2.pcap')
 
     port_list = list(map(int, port_list))
 
@@ -658,25 +659,23 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, realID, permResultsFo
     p = subprocess.check_output(command, shell=True)
 
     # remove payload data from pcap file
-    pkts = scapy.all.rdpcap(interm_pcap)
-    for pkt in pkts:
-        pkt.load = ''
-    scapy.all.wrpcap(interm_pcap, pkts)
+    command = "editcap -C 128:10000 {} {}".format(interm_pcap, interm2_pcap)
+    p = subprocess.check_output(command, shell=True)
 
     # anonymize the IP and update checksums
     if ":" in anonymizedIP:
         command = ["tcprewrite", "--fixcsum", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
-                   "--infile={}".format(interm_pcap),
+                   "--infile={}".format(interm2_pcap),
                    "--outfile={}".format(out_pcap)]
     else:
         command = ["tcprewrite", "--fixcsum", "--pnat={}:{}".format(clientIP, anonymizedIP),
-                   "--infile={}".format(interm_pcap),
+                   "--infile={}".format(interm2_pcap),
                    "--outfile={}".format(out_pcap)]
 
     p = subprocess.check_output(command)
 
     # Remove the intermediate pcaps
-    interm_pcaps = [in_pcap, interm_pcap]
+    interm_pcaps = [in_pcap, interm_pcap, interm2_pcap]
     for interm_pcap in interm_pcaps:
         try:
             os.remove(interm_pcap)
