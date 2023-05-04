@@ -860,18 +860,17 @@ def main():
     configs = Configs()
     configs.set('xputInterval', 0.25)
     configs.set('alpha', 0.95)
-    configs.set('mainPath', '/data/RecordReplay/')
-    configs.set('resultsFolder', 'ReplayDumpsTimestamped/')
-    configs.set('logsPath', 'logs/')
+    configs.set('mainPath', '/var/spool/wehe/')
+    configs.set('resultsFolder', 'replay/')
+    configs.set('logsPath', '/tmp/')
     configs.set('analyzerLog', 'analyzerLog.log')
     configs.read_args(sys.argv)
     configs.check_for(['analyzerPort'])
 
     PRINT_ACTION('Configuring paths', 0)
     configs.set('resultsFolder', configs.get('mainPath') + configs.get('resultsFolder'))
-    configs.set('tmpResultsFolder', configs.get('mainPath') + configs.get('tmpResultsFolder'))
-    configs.set('logsPath', configs.get('mainPath') + configs.get('logsPath'))
     configs.set('analyzerLog', configs.get('logsPath') + configs.get('analyzerLog'))
+    configs.set('errorsLog', configs.get('logsPath') + configs.get('errorsLog'))
 
     PRINT_ACTION('Setting up logging', 0)
     if not os.path.isdir(configs.get('logsPath')):
