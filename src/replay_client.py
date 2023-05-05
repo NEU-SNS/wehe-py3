@@ -237,7 +237,7 @@ class tcpClient(object):
                     activityQ.put(1)
 
                     try:
-                        if data[:12] == 'WhoTheFAreU?':
+                        if data[:12] == 'SuspiciousClientIP!':
                             flippedIP = data[13:]
                             errorQ.put(('ipFlip', flippedIP, self.dst_instance))
                     except:
