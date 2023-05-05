@@ -20,7 +20,7 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, requests, ipaddress, jc
+    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, ipaddress
 
 import multiprocessing, threading, logging, sys, traceback
 
@@ -650,6 +650,7 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, realID, permResultsFo
     out_pcap = in_pcap.replace('.pcap', '_out.pcap')
     # If there is no content modification, we store only packet headers (first 128 bytes)
     interm_pcap = in_pcap.replace('.pcap', '_interm.pcap')
+    interm2_pcap = in_pcap.replace('.pcap', '_interm2.pcap')
 
     port_list = list(map(int, port_list))
 
@@ -658,25 +659,23 @@ def clean_pcap(in_pcap, clientIP, anonymizedIP, port_list, realID, permResultsFo
     p = subprocess.check_output(command, shell=True)
 
     # remove payload data from pcap file
-    pkts = scapy.all.rdpcap(interm_pcap)
-    for pkt in pkts:
-        pkt.load = ''
-    scapy.all.wrpcap(interm_pcap, pkts)
+    command = "editcap -C 128:10000 {} {}".format(interm_pcap, interm2_pcap)
+    p = subprocess.check_output(command, shell=True)
 
     # anonymize the IP and update checksums
     if ":" in anonymizedIP:
         command = ["tcprewrite", "--fixcsum", "--pnat=[{}]:[{}]".format(clientIP, anonymizedIP),
-                   "--infile={}".format(interm_pcap),
+                   "--infile={}".format(interm2_pcap),
                    "--outfile={}".format(out_pcap)]
     else:
         command = ["tcprewrite", "--fixcsum", "--pnat={}:{}".format(clientIP, anonymizedIP),
-                   "--infile={}".format(interm_pcap),
+                   "--infile={}".format(interm2_pcap),
                    "--outfile={}".format(out_pcap)]
 
     p = subprocess.check_output(command)
 
     # Remove the intermediate pcaps
-    interm_pcaps = [in_pcap, interm_pcap]
+    interm_pcaps = [in_pcap, interm_pcap, interm2_pcap]
     for interm_pcap in interm_pcaps:
         try:
             os.remove(interm_pcap)
@@ -878,40 +877,3 @@ def get_anonymizedIP(ip):
         anonymizedIP = ip
 
     return anonymizedIP
-
-
-############################################
-##### ADDED BY NAL FROM HERE #####
-############################################
-def get_mlab_hostname(mlab_ip):
-    mlab_hostnames = requests.get('https://siteinfo.mlab-oti.measurementlab.net/v2/sites/hostnames.json').json()
-    mlab_ip = ipaddress.ip_address(mlab_ip)
-    for record in mlab_hostnames:
-        if record['ipv4'] and (ipaddress.ip_address(record['ipv4']) == mlab_ip):
-            return record['hostname']
-        if record['ipv6'] and (ipaddress.ip_address(record['ipv6']) == mlab_ip):
-            return record['hostname']
-    return ""
-
-
-def traceroute(serverIP, clientIP, tracerouteFile):
-    traceroute = subprocess.Popen(["traceroute", "-w", "0.5", "-n", clientIP], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-    result = jc.parse('traceroute', traceroute.stdout.read().decode("UTF-8"))
-    for hop in result['hops']:
-        for probe in hop['probes']:
-            del probe['annotation']
-            del probe['asn']
-            del probe['name']
-
-    for probe in result['hops'][-1]['probes']:
-        probe['ip'] = get_anonymizedIP(probe['ip'])
-
-    tracerouteInfo = {
-        'time': time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-        'source_ip': serverIP, 'source_name': get_mlab_hostname(serverIP), 'destination_ip': get_anonymizedIP(clientIP),
-        'hops': result['hops']
-    }
-
-    with open(tracerouteFile, 'w') as outfile:
-        outfile.write(json.dumps(tracerouteInfo))
