@@ -384,10 +384,10 @@ class TCPServer(object):
 
                     exceptionsReport = 'ipFlip-resolved'
                 except KeyError:
-                    connection.sendall('WhoTheFAreU?;{}'.format(clientIP).encode())
+                    connection.sendall('SuspiciousClientIP!;{}'.format(clientIP).encode())
                     return
             else:
-                connection.sendall('WhoTheFAreU?,{}'.format(clientIP).encode())
+                connection.sendall('SuspiciousClientIP!,{}'.format(clientIP).encode())
                 self.errorlog_q.put(
                     (get_anonymizedIP(id), 'Unknown packet from unknown client', 'TCP', str(self.instance)))
                 exceptionsReport = 'Unknown packet from unknown client'
