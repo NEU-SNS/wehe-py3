@@ -37,19 +37,19 @@ services:
       openssl req -x509 -subj "/C=US/ST=NY/L=Test/O=Test/CN=localhost" -new -nodes -key ca.key -sha256 -days 1024 -out ca.crt < /dev/null &&
       cd /wehe && /bin/bash startserver.sh localhost lo
 
-  wehe-client:
-    image: local-wehe-server
-    depends_on:
-     - wehe-server
-    volumes:
-      - ./local:/local
-    # Place the client on the same network as the server for local test.
-    network_mode: "service:wehe-server"
-    entrypoint:
-    - /bin/bash
-    command:
-      - -c
-      # Wait until the server is online before running a test.
-      - |
-        until nc -z localhost 55555 ; do sleep 1; done;
-        python3 replay_client.py --pcap_folder=/replayTraces/SpotifyRandom_01042019 --serverInstance=localhost
+  # wehe-client:
+  #   image: local-wehe-server
+  #   depends_on:
+  #    - wehe-server
+  #   volumes:
+  #     - ./local:/local
+  #   # Place the client on the same network as the server for local test.
+  #   network_mode: "service:wehe-server"
+  #   entrypoint:
+  #   - /bin/bash
+  #   command:
+  #     - -c
+  #     # Wait until the server is online before running a test.
+  #     - |
+  #       until nc -z localhost 55555 ; do sleep 1; done;
+  #       python3 replay_client.py --pcap_folder=/replayTraces/SpotifyRandom_01042019 --serverInstance=localhost

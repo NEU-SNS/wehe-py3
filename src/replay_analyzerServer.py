@@ -36,6 +36,7 @@ from python_lib import *
 from prometheus_client import start_http_server, Counter
 
 import finalAnalysis as FA
+import localization_analysis as LocA
 
 POSTq = gevent.queue.Queue()
 
@@ -507,14 +508,24 @@ def analyzer(userID, historyCount, testID, alpha):
     resObjClient = FA.finalAnalyzer(userID, historyCount, testID, resultsFolder,
                                     alpha)
 
+def localizer(userID, hisoryCount, testID, attrs):
+    resultsFolder = Configs().get('tmpResultsFolder')
+    LOG_ACTION(logger, 'localizer: {}, {}, {}'.format(userID, hisoryCount, testID))
+
+    resToBeNamed = LocA.LocalizationAnalysis(userID, hisoryCount, testID, resultsFolder, attrs)
+
 
 def jobDispatcher(q):
     alpha = Configs().get('alpha')
     pool = gevent.pool.Pool()
     while True:
-        userID, historyCount, testID = q.get()
-        pool.apply_async(analyzer, args=(userID, historyCount, testID, alpha,))
-
+        params = q.get()
+        if len(params) == 3:
+            userID, historyCount, testID = q.get()
+            pool.apply_async(analyzer, args=(userID, historyCount, testID, alpha,))
+        else:
+            userID, historyCount, testID, prop = q.get()
+            pool.apply_async(localizer, args=(userID, historyCount, testID, alpha,))
 
 class myJsonEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -665,6 +676,7 @@ def getHandler(args):
 
     elif command == 'DPIreset':
         return resetDPI(args)
+    # TODO: Handle get request from other server
 
     else:
         return json.dumps({'success': False, 'error': 'unknown command'})
@@ -677,6 +689,8 @@ def postHandler(args):
     Basically puts the job on the queue and return True.
 
     If something wrong with the job, returns False.
+    Notes:
+        Think of this as the 'analyzer channel' that handles requests related to analysis between client and server
     '''
     try:
         command = args['command'][0].decode('ascii', 'ignore')
@@ -697,6 +711,20 @@ def postHandler(args):
     else:
         errorlog_q.put(('unknown command', args))
         return json.dumps({'success': False, 'error': 'unknown command'})
+    
+    # TODO: add a command for localization
+    # try:
+    #     secondServer = args['secondServer'][0].decode('ascii', 'ignore')
+    # except KeyError as e:
+    #     return json.dumps({'success': False, 'missing': str(e)})
+    # except ValueError as e:
+    #     return json.dumps({'success': False, 'value error': str(e)})
+
+    # if command == 'localize':
+    #     POSTq_loc.put((userID, historyCount, testID, secondServer))
+    # else:
+    #     errorlog_q.put(('unknown command', args))
+    #     return json.dumps({'success': False, 'error': 'unknown command'})
 
     LOG_ACTION(logger, 'Returning for POST UserID {} and historyCount {} testID {} ***'.format(
         userID, historyCount, testID))
@@ -883,6 +911,10 @@ def main():
     g = gevent.Greenlet.spawn(jobDispatcher, POSTq)
 
     g.start()
+    
+    # TODO: create a queue for localization
+    # loc_g = gevent.Greenlet.spawn(jobDispatcher_loc, POSTq_localization)
+    # loc_g.start()
 
     if configs.is_given('analyzer_tls_port') and configs.is_given('certs_folder'):
         certs_folder = configs.get('certs_folder')
