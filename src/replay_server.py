@@ -58,6 +58,8 @@ from contextlib import contextmanager
 from threading import Timer
 from prometheus_client import start_http_server, Summary, Counter, Gauge
 
+import weheResultsWriter as bqResultWriter
+
 DEBUG = 5
 
 logger = logging.getLogger('replay_server')
@@ -1805,6 +1807,7 @@ def run(*args):
     configs.set('serialize', 'pickle')
     configs.set('mainPath', '/var/spool/wehe/')
     configs.set('resultsFolder', 'replay/')
+    configs.set('bqSchemaFolder', '/var/spool/datatypes')
     configs.set('logsPath', '/tmp/')
     configs.set('replayLog', 'replayLog.log')
     configs.set('errorsLog', 'errorsLog.log')
@@ -1855,6 +1858,12 @@ def run(*args):
 
     if not os.path.isdir(configs.get('tmpResultsFolder')):
         os.makedirs(configs.get('tmpResultsFolder'))
+
+    # Create results datatype schemas (Added to support autoloadable wehe data in BQ)
+    os.makedirs(configs.get('bqSchemaFolder'), exist_ok=True)
+    bqResultWriter.create_replayInfo_schema()
+    bqResultWriter.create_clientXputs_schema()
+    bqResultWriter.create_decisions_schema()
 
     if configs.get('iperf'):
         LOG_ACTION(logger, 'Starting iperf server')
