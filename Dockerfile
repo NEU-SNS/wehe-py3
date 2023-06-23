@@ -15,6 +15,7 @@ RUN setcap cap_net_raw=ep /usr/sbin/tcpdump
 
 ADD src /wehe
 ADD replayTraces /replayTraces
+ADD res /res
 WORKDIR /wehe
 # You must provide a local hostname argument when you start this image, as well
 # as the net interface to listen on.

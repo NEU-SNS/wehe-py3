@@ -27,7 +27,6 @@ import json, ast
 # Wehe results have four datatypes:
 ReplayInfo_DATATYPE = 'replayInfo1'
 ReplayInfo_SCHEMA = [
-    bigquery.SchemaField("UUID", "STRING", mode="REQUIRED", description="Unique measurement identifier"),
     bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("userID", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("clientIP", "STRING", mode="REQUIRED"),
@@ -65,12 +64,12 @@ ReplayInfo_SCHEMA = [
         bigquery.SchemaField("updatedCarrierName", "STRING"),
     ]),
     bigquery.SchemaField("emptyBool", "BOOLEAN", description="A Boolean value no longer used"),
-    bigquery.SchemaField("clientVersion", "STRING", description="The version of client app")
+    bigquery.SchemaField("clientVersion", "STRING", description="The version of client app"),
+    bigquery.SchemaField("measurementUUID", "STRING", description="Unique measurement identifier")
 ]
 
 ClientXputs_DATATYPE = 'clientXputs1'
 ClientXputs_SCHEMA = [
-    bigquery.SchemaField("UUID", "STRING", mode="REQUIRED", description="Unique measurement identifier"),
     bigquery.SchemaField("userID", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("historyCount", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("testID", "STRING", mode="REQUIRED",
@@ -82,7 +81,6 @@ ClientXputs_SCHEMA = [
 
 Decisions_DATATYPE = 'decisions1'
 Decisions_SCHEMA = [
-    bigquery.SchemaField("UUID", "STRING", mode="REQUIRED", description="Unique measurement identifier"),
     bigquery.SchemaField("userID", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("historyCount", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("testID", "STRING", mode="REQUIRED",
@@ -152,10 +150,7 @@ def move_replayInfo(userID, historyCount, testID):
     with open(tmpReplayInfoFile, 'r') as readFile:
         info = json.load(readFile)
 
-    # TODO: set UUID to the true value instead of empty
-    info = ['empty'] + info
     info_key_value = {k.name: v for k, v in zip(ReplayInfo_SCHEMA, info)}
-
     try:
         info_key_value['metadata'] = ast.literal_eval(info_key_value['metadata'])
     except:
@@ -176,10 +171,8 @@ def move_clientXputs(userID, historyCount, testID):
     with open(tmpClientXputsFile, 'r') as readFile:
         xputs = json.load(readFile)
 
-    # TODO: set UUID to the true value instead of empty
     xputs_key_value = {
-        'UUID': 'empty', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
-        'xputSamples': xputs[0], 'intervals': xputs[1]
+        'userID': userID, 'historyCount': historyCount, 'testID': testID, 'xputSamples': xputs[0], 'intervals': xputs[1]
     }
     with open(permClientXputsFile, 'w') as f:
         f.write(json.dumps(xputs_key_value))
@@ -196,8 +189,7 @@ def move_result_file(userID, historyCount, testID):
     with open(tmpDecisionsFile, 'r') as readFile:
         results = json.load(readFile)
 
-    # TODO: set UUID to the true value instead of empty
-    results = ['empty', userID, historyCount, testID] + results
+    results = [userID, historyCount, testID] + results
     results_key_value = {k.name: v for k, v in zip(Decisions_SCHEMA, results)}
 
     key_stats = ['max', 'min', 'average', 'median', 'std']
