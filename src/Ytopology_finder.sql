@@ -20,6 +20,7 @@ DECLARE period INT64 DEFAULT 7;
 DECLARE end_date DATE DEFAULT CURRENT_DATE();
 DECLARE start_date DATE DEFAULT DATE_SUB(CURRENT_DATE(), INTERVAL period-1 DAY);
 DECLARE users ARRAY<STRING>;
+DECLARE bucket_uri STRING DEFAULT "gs://archive-measurement-lab/wehe/ytopologies/";
 
 --
 -- Helper Functions
@@ -89,10 +90,12 @@ CREATE TEMP TABLE y_topologies (
 SET users = ARRAY(
   SELECT dst
   FROM (
-    SELECT DISTINCT raw.Tracelb.dst
+    SELECT DISTINCT raw.Tracelb.dst, COUNT(raw.Tracelb.dst) as tr_count
     FROM `measurement-lab.wehe.scamper1`
     WHERE date BETWEEN start_date AND end_date AND LOWER(client.Network.ASName) NOT LIKE '%google%'
+    GROUP BY raw.Tracelb.dst
   )
+  WHERE (tr_count > 1) AND (tr_count < 1000)
 );
 
 
@@ -101,85 +104,94 @@ SET users = ARRAY(
 --
 FOR user in (SELECT * FROM unnest(users) user)
 DO
-    INSERT INTO y_topologies
+    CREATE OR REPLACE TEMP TABLE topologies AS (
 
-    -- select traceroute records
-    WITH scamper1 AS (
-    SELECT *
-    FROM `measurement-lab.wehe.scamper1`
-    WHERE (date BETWEEN start_date AND end_date) AND (raw.Tracelb.dst = user.user)
-    ),
+        -- select traceroute records
+        WITH scamper1 AS (
+            SELECT *
+            FROM `measurement-lab.wehe.scamper1`
+            WHERE (date BETWEEN start_date AND end_date) AND (raw.Tracelb.dst = user.user)
+        ),
 
-    -- convert scamper format to single path - then remove duplicates
-    single_path_traceroute AS (
-    SELECT ARRAY_AGG(spt LIMIT 1)[ORDINAL(1)].*
-    FROM (
-        SELECT
-        id,
-        raw.Tracelb.src as server_ip,
-        server.Network.ASNumber as server_ASN,
-        server.Site as server_site,
-        raw.Tracelb.dst as client_ip,
-        client.Network.ASNumber as client_ASN,
-        FindPath(raw.Tracelb.nodes) as tr
-        FROM scamper1) as spt
-    GROUP BY FARM_FINGERPRINT(CONCAT(spt.server_ip, spt.client_ip, TO_JSON_STRING(spt.tr)))
-    ),
+        -- convert scamper format to single path - then remove duplicates
+        single_path_traceroute AS (
+            SELECT ARRAY_AGG(spt LIMIT 1)[ORDINAL(1)].*
+            FROM (
+                SELECT
+                id,
+                raw.Tracelb.src as server_ip,
+                server.Network.ASNumber as server_ASN,
+                server.Site as server_site,
+                raw.Tracelb.dst as client_ip,
+                client.Network.ASNumber as client_ASN,
+                FindPath(raw.Tracelb.nodes) as tr
+                FROM scamper1) as spt
+            GROUP BY FARM_FINGERPRINT(CONCAT(spt.server_ip, spt.client_ip, TO_JSON_STRING(spt.tr)))
+        ),
 
-    -- annotate with the ASNumber and ASName from hopannotation2
-    annotated_traceroute AS (
-    SELECT
-        spt.id, spt.server_ip, spt.server_ASN, spt.server_site, spt.client_ip, spt.client_ASN,
-        ARRAY_AGG(STRUCT(
-        hops.offset, hops.hop_id, hops.hop_addr, ha2.raw.Annotations.Network.ASNumber AS hop_ASN, ha2.raw.Annotations.Network.ASName AS hop_ASName, hops.next_addrs, hops.is_next_missing
-        ) ORDER BY hops.offset) as hops
-    FROM single_path_traceroute as spt, UNNEST(spt.tr) as hops
+        -- annotate with the ASNumber and ASName from hopannotation2
+        annotated_traceroute AS (
+            SELECT
+                spt.id, spt.server_ip, spt.server_ASN, spt.server_site, spt.client_ip, spt.client_ASN,
+                ARRAY_AGG(STRUCT(
+                hops.offset, hops.hop_id, hops.hop_addr, ha2.raw.Annotations.Network.ASNumber AS hop_ASN, ha2.raw.Annotations.Network.ASName AS hop_ASName, hops.next_addrs, hops.is_next_missing
+                ) ORDER BY hops.offset) as hops
+            FROM single_path_traceroute as spt, UNNEST(spt.tr) as hops
 
-    LEFT JOIN `measurement-lab.wehe_raw.hopannotation2` as ha2 ON (hops.hop_id = ha2.id)
-    WHERE hops.hop_addr != spt.client_ip
-    GROUP BY 1, 2, 3, 4, 5, 6
-    ),
+            LEFT JOIN `measurement-lab.wehe_raw.hopannotation2` as ha2 ON (hops.hop_id = ha2.id)
+            WHERE hops.hop_addr != spt.client_ip
+            GROUP BY 1, 2, 3, 4, 5, 6
+        ),
 
-    -- step1 of the algorithm: divide trace into hops outside the edge ISP and hops inside the edge ISP
-    step1 AS (
-        SELECT
-            *, --EXCEPT (hops),
-            HopsInsideEdgeAS(tr.hops, tr.client_ASN) as inside_hops,
-            HopsOutsideEdgeAS(tr.hops, tr.client_ASN) as outside_hops
-        FROM annotated_traceroute as tr
-    ),
+        -- step1 of the algorithm: divide trace into hops outside the edge ISP and hops inside the edge ISP
+        step1 AS (
+            SELECT
+                *, --EXCEPT (hops),
+                HopsInsideEdgeAS(tr.hops, tr.client_ASN) as inside_hops,
+                HopsOutsideEdgeAS(tr.hops, tr.client_ASN) as outside_hops
+            FROM annotated_traceroute as tr
+        ),
 
-    -- step2 of the agorithm: join the table of step 1 with itself to create server pairs, and compute the following:
-    --  1. find the longest common path inside the edge ISP
-    --  2. find if there exists intersecting hops outside the edge ISP
-    step2 AS (
-        SELECT
-            right_tr.client_ip,
-            right_tr.client_ASN,
-            STRUCT(
-                STRUCT(right_tr.server_ip, right_tr.server_ASN, right_tr.server_site) as s1,
-                STRUCT(left_tr.server_ip, left_tr.server_ASN, left_tr.server_site) as s2) as servers,
-            ARRAY_REVERSE(LongestTraceMatch(ARRAY_REVERSE(right_tr.inside_hops), ARRAY_REVERSE(left_tr.inside_hops))) as common_hops,
-            CheckForIntersection(right_tr.outside_hops, left_tr.outside_hops) as outside_intersection
-        FROM step1 as right_tr
-        CROSS JOIN step1 as left_tr
-        WHERE right_tr.server_ASN < left_tr.server_ASN
-    ),
+        -- step2 of the agorithm: join the table of step 1 with itself to create server pairs, and compute the following:
+        --  1. find the longest common path inside the edge ISP
+        --  2. find if there exists intersecting hops outside the edge ISP
+        step2 AS (
+            SELECT
+                right_tr.client_ip,
+                right_tr.client_ASN,
+                STRUCT(
+                    STRUCT(right_tr.server_ip, right_tr.server_ASN, right_tr.server_site) as s1,
+                    STRUCT(left_tr.server_ip, left_tr.server_ASN, left_tr.server_site) as s2) as servers,
+                ARRAY_REVERSE(LongestTraceMatch(ARRAY_REVERSE(right_tr.inside_hops), ARRAY_REVERSE(left_tr.inside_hops))) as common_hops,
+                CheckForIntersection(right_tr.outside_hops, left_tr.outside_hops) as outside_intersection
+            FROM step1 as right_tr
+            CROSS JOIN step1 as left_tr
+            WHERE right_tr.server_ASN < left_tr.server_ASN
+        ),
 
-    -- step3 of the algorithm: select pairs from step2 that have:
-    --  (1) no intersection outside the edge ISP
-    --  (2) at least one common hop before the user itself
-    step3 AS (
-        SELECT * EXCEPT(outside_intersection)
-        FROM step2
-        WHERE step2.outside_intersection = false AND ARRAY_LENGTH(step2.common_hops) != 0
-    )
+        -- step3 of the algorithm: select pairs from step2 that have:
+        --  (1) no intersection outside the edge ISP
+        --  (2) at least one common hop before the user itself
+        step3 AS (
+            SELECT * EXCEPT(outside_intersection)
+            FROM step2
+            WHERE step2.outside_intersection = false AND ARRAY_LENGTH(step2.common_hops) != 0
+        )
 
-    -- append step3 output to y_topologies
-    SELECT * FROM step3;
+        SELECT ARRAY_AGG(step3 LIMIT 1)[ORDINAL(1)].*
+        FROM step3
+        GROUP BY FARM_FINGERPRINT(TO_JSON_STRING(step3))
+    );
+
+    IF (SELECT count(1) FROM topologies) != 0
+    THEN
+        EXPORT DATA OPTIONS(
+        uri= CONCAT(bucket_uri, 'ytopologies-', user.user, '-*.json'),
+        format='JSON',
+        overwrite=true) AS
+        SELECT client_ip, client_ASN, ARRAY_AGG(STRUCT(topologies.servers, topologies.common_hops)) as topos
+        FROM topologies
+        GROUP BY client_ip, client_ASN;
+    END IF;
+
 END FOR;
-
--- final results
-SELECT ARRAY_AGG(y_topologies LIMIT 1)[ORDINAL(1)].*
-FROM y_topologies
-GROUP BY FARM_FINGERPRINT(TO_JSON_STRING(y_topologies))
