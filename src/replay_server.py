@@ -700,7 +700,7 @@ class SideChannel(object):
         gevent.Greenlet.spawn(self.run_http)
 
         # start the prometheus client here
-        start_http_server(9090)
+        start_http_server(9990)
         # not making a separate thread since this loop keeps the main python process running
         LOG_ACTION(logger, 'https sidechannel server running')
         self.https_server.serve_forever()
