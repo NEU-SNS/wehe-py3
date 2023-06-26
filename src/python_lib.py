@@ -20,10 +20,11 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, ipaddress
+    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, ipaddress, datetime
 
 import multiprocessing, threading, logging, sys, traceback
 
+from directory_downloader import DDownloader
 
 try:
     import dpkt
@@ -877,3 +878,35 @@ def get_anonymizedIP(ip):
         anonymizedIP = ip
 
     return anonymizedIP
+
+
+#####################################
+##### ADDED BY Zeinab FROM HERE #####
+#####################################
+class AnalyzerRequestHandler:
+
+    @staticmethod
+    def getCommandStr(): return None
+
+    @staticmethod
+    def handleRequest(args): return None
+
+
+async def download_directory_from_url(url, results_dir):
+    try:
+        downloader = DDownloader(coloring=False, verbose=False)
+        await downloader.crawl(url)
+        await downloader.download_files(full_directory=results_dir)
+        return True
+    except:
+        return False
+
+
+# moved from replay_analyzerServer.py
+class myJsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            obj = obj.isoformat()
+        else:
+            obj = super(myJsonEncoder, self).default(obj)
+        return obj
