@@ -18,7 +18,7 @@ limitations under the License.
 #######################################################################################################
 #######################################################################################################
 '''
-import asyncio, gevent, datetime, shutil
+import os, gevent, datetime, shutil
 
 import gevent.monkey
 gevent.monkey.patch_all(ssl=False)
@@ -26,41 +26,51 @@ gevent.monkey.patch_all(ssl=False)
 from python_lib import *
 
 
-class TopologyFinder:
+def downloadYTopologies():
+    date = time.strftime("%Y-%m-%d", time.gmtime())
+    url = '{}/{}'.format(Configs().get('toposDb'), date)
+    topo_db = os.path.join(Configs().get('tmpCacheFolder'), 'ytopologies')
 
-    def __init__(self):
-        download_time = datetime.time(hour=12, minute=0, second=0)
-        while True:
-            self.downloadToposDb()
+    # first make sure to remove the old versions
+    if os.path.exists(topo_db) and os.path.isdir(topo_db):
+        shutil.rmtree(topo_db)
 
-            curr_time = datetime.datetime.now()
-            next_time = datetime.datetime.combine(datetime.datetime.today() + datetime.timedelta(days=1), download_time)
-            time_interval = (next_time-curr_time).total_seconds()
-            LOG_ACTION(logger, 'Next download scheduled on {}, which is in {}sec.'.format(next_time, time_interval))
+    # download new data
+    os.makedirs(topo_db, exist_ok=True)
+    while not downloadWebpageContent(url, topo_db):
+        LOG_ACTION(logger, 'topologies at {} are still not available.'.format(url))
+        gevent.sleep(60)
+    LOG_ACTION(logger, 'Topologies are downloaded from {}.'.format(url))
 
-            gevent.sleep(time_interval)
+
+def runScheduledYTopologiesDownload():
+    print('method called')
+    download_time = datetime.time(hour=12, minute=0, second=0)
+    while True:
+        downloadYTopologies()
+
+        curr_time = datetime.datetime.now()
+        next_time = datetime.datetime.combine(datetime.datetime.today() + datetime.timedelta(days=1), download_time)
+        time_interval = (next_time-curr_time).total_seconds()
+        LOG_ACTION(logger, 'Next download scheduled on {}, which is in {}sec.'.format(next_time, time_interval))
+
+        gevent.sleep(time_interval)
+
+
+class GetServersAnalyzerRequestHandler(AnalyzerRequestHandler):
+    @staticmethod
+    def getCommandStr(): return "getServers"
 
     @staticmethod
-    def downloadToposDb():
-        date = time.strftime("%Y-%m-%d", time.gmtime())
-        url = '{}/{}'.format(Configs().get('toposDb'), date)
-        topo_db = os.path.join(Configs().get('tmpCacheFolder'), 'ytopologies')
+    def handleRequest(args):
+        try:
+            userIP = args['userIP'][0].decode('ascii', 'ignore')
+        except KeyError as e:
+            return json.dumps({'success': False, 'missing': str(e)})
 
-        # first make sure to remove the old versions
-        if os.path.exists(topo_db) and os.path.isdir(topo_db):
-            shutil.rmtree(topo_db)
-
-        # download new data
-        while not asyncio.run(download_directory_from_url(url, topo_db)):
-            LOG_ACTION(logger, 'topologies at {} are still not available.'.format(url))
-            gevent.sleep(60)
-        LOG_ACTION(logger, 'Topologies are downloaded from {}.'.format(url))
-
-    @staticmethod
-    def getServers(user_ip):
         filepath = os.path.join(
             Configs().get('tmpCacheFolder'), 'ytopologies',
-            'ytopologies-{}-000000000000.json'.format(get_anonymizedIP(user_ip)))
+            'ytopologies-{}-000000000000.json'.format(get_anonymizedIP(userIP)))
 
         # handle case client have no y-shaped topology
         if not os.path.exists(filepath):
@@ -78,16 +88,3 @@ class TopologyFinder:
         if len(servers_list) == 0:
             return json.dumps({'success': False, 'error': 'No Y-topology found.'})
         return json.dumps({'success': True, 'response': {'server-pairs': list(servers_list)}}, cls=myJsonEncoder)
-
-    class GetServersAnalyzerRequestHandler(AnalyzerRequestHandler):
-
-        @staticmethod
-        def getCommandStr(): return "getServers"
-
-        @staticmethod
-        def handleRequest(args):
-            try:
-                userIP = args['userIP'][0].decode('ascii', 'ignore')
-            except KeyError as e:
-                return json.dumps({'success': False, 'missing': str(e)})
-            return TopologyFinder.getServers(userIP)

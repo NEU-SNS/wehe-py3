@@ -23,8 +23,7 @@ import sys, os, configparser, math, json, time, subprocess, \
     random, string, logging.handlers, socket, psutil, hashlib, scapy.all, ipaddress, datetime
 
 import multiprocessing, threading, logging, sys, traceback
-
-from directory_downloader import DDownloader
+import bs4, requests, urllib.parse
 
 try:
     import dpkt
@@ -892,14 +891,21 @@ class AnalyzerRequestHandler:
     def handleRequest(args): return None
 
 
-async def download_directory_from_url(url, results_dir):
-    try:
-        downloader = DDownloader(coloring=False, verbose=False)
-        await downloader.crawl(url)
-        await downloader.download_files(full_directory=results_dir)
-        return True
-    except:
+# This method is specific to Mlab's statistics platform
+def downloadWebpageContent(url, output_dir):
+    r = requests.get(url)
+
+    if r.status_code != 200:
         return False
+
+    content = bs4.BeautifulSoup(r.text, "xml")
+    for key in content.find_all("Key"):
+        jsonfile_url = urllib.parse.urljoin(url, key.getText())
+        jsonfile_name = jsonfile_url.split('/')[-1]
+        with open(os.path.join(output_dir, jsonfile_name), 'w') as jsonfile:
+            json.dump(requests.get(jsonfile_url).json(), jsonfile)
+        break
+    return True
 
 
 # moved from replay_analyzerServer.py
