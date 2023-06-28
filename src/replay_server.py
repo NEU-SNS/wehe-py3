@@ -38,7 +38,6 @@ To kill the server:
 '''
 
 import gevent.monkey
-import time
 import tracemalloc
 import linecache
 
@@ -57,6 +56,9 @@ import signal
 from contextlib import contextmanager
 from threading import Timer
 from prometheus_client import start_http_server, Summary, Counter, Gauge
+
+import weheResultsWriter as bqResultWriter
+from third_party.uuid.uuid import UUID
 
 DEBUG = 5
 
@@ -195,6 +197,7 @@ class ClientObj(object):
         self.smpacNum = smpacNum
         self.saction = saction
         self.sspec = sspec
+        self.uuid = None
 
         if not os.path.exists(self.targetFolder):
             os.makedirs(self.targetFolder)
@@ -225,7 +228,7 @@ class ClientObj(object):
             json.dump([self.incomingTime, self.realID, anonymizedIP, anonymizedIP, self.replayName, self.extraString,
                           self.historyCount, self.testID,
                           self.exceptions, self.success, self.secondarySuccess, self.iperfRate,
-                          time.time() - self.startTime, self.clientTime, self.mobileStats, False, self.clientVersion], writeFile)
+                          time.time() - self.startTime, self.clientTime, self.mobileStats, False, self.clientVersion, self.uuid], writeFile)
 
     def get_info(self):
         return list(map(str, [self.incomingTime, self.realID, self.id, self.ip, self.replayName, self.extraString,
@@ -650,6 +653,7 @@ class SideChannel(object):
         self.admissionCtrl = {}  # self.admissionCtrl[id][replayName] = testObj
         self.inProgress = {}  # self.inProgress[realID] = (id, replayName)
         self.replays_since_last_cleaning = []  # replays used since last cleaning
+        self.uuid = UUID(Configs().get('uuidPrefixFile')) # used to generate uuid for mlab records
         if Configs().get('EC2'):
             self.instanceID = self.getEC2instanceID()
         else:
@@ -798,6 +802,9 @@ class SideChannel(object):
         dClient = ClientObj(incomingTime, realID, id, clientIP, replayName, testID, historyCount, extraString,
                             connection, clientVersion, smpacNum, saction, sspec)
         dClient.hosts.add(id)
+
+        # Added to support autoloadable wehe data in BQ
+        dClient.uuid = self.uuid.from_socket(connection)
 
         # 2a- if a sideChannel with same realID is pending, kill it!
         # No two clients with the same IP can replay at the same time, the first replay has to be killed
@@ -1805,6 +1812,7 @@ def run(*args):
     configs.set('serialize', 'pickle')
     configs.set('mainPath', '/var/spool/wehe/')
     configs.set('resultsFolder', 'replay/')
+    configs.set('bqSchemaFolder', '/var/spool/datatypes')
     configs.set('logsPath', '/tmp/')
     configs.set('replayLog', 'replayLog.log')
     configs.set('errorsLog', 'errorsLog.log')
@@ -1816,6 +1824,7 @@ def run(*args):
     configs.set('iperf', False)
     configs.set('iperf_port', 5555)
     configs.set('publicIP', '')
+    configs.set('uuidPrefixFile', '/uuid_prefix_tag.txt')
     configs.read_args(sys.argv)
     configs.check_for(['pcap_folder'])
 
@@ -1855,6 +1864,12 @@ def run(*args):
 
     if not os.path.isdir(configs.get('tmpResultsFolder')):
         os.makedirs(configs.get('tmpResultsFolder'))
+
+    # Create results datatype schemas (Added to support autoloadable wehe data in BQ)
+    os.makedirs(configs.get('bqSchemaFolder'), exist_ok=True)
+    bqResultWriter.create_replayInfo_schema()
+    bqResultWriter.create_clientXputs_schema()
+    bqResultWriter.create_decisions_schema()
 
     if configs.get('iperf'):
         LOG_ACTION(logger, 'Starting iperf server')
