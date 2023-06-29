@@ -144,7 +144,7 @@ def move_replayInfo(userID, historyCount, testID):
         Configs().get('tmpResultsFolder'), userID, userID, historyCount, testID
     )
     permReplayInfoFile = '{}/replayInfo_{}_{}_{}.json'.format(
-        get_datatype_results_folder(ReplayInfo_DATATYPE), userID, historyCount, testID
+        get_datatype_results_folder(ReplayInfo_DATATYPE), userID.replace('@', ''), historyCount, testID
     )
 
     with open(tmpReplayInfoFile, 'r') as readFile:
@@ -165,7 +165,7 @@ def move_clientXputs(userID, historyCount, testID):
         Configs().get('tmpResultsFolder'), userID, userID, historyCount, testID
     )
     permClientXputsFile = '{}/Xput_{}_{}_{}.json'.format(
-        get_datatype_results_folder(ClientXputs_DATATYPE), userID, historyCount, testID
+        get_datatype_results_folder(ClientXputs_DATATYPE), userID.replace('@', ''), historyCount, testID
     )
 
     with open(tmpClientXputsFile, 'r') as readFile:
@@ -183,7 +183,7 @@ def move_result_file(userID, historyCount, testID):
         Configs().get('tmpResultsFolder'), userID, userID, historyCount, testID
     )
     permDecisionsFile = '{}/results_{}_Client_{}_{}.json'.format(
-        get_datatype_results_folder(Decisions_DATATYPE), userID, historyCount, testID
+        get_datatype_results_folder(Decisions_DATATYPE), userID.replace('@', ''), historyCount, testID
     )
 
     with open(tmpDecisionsFile, 'r') as readFile:
