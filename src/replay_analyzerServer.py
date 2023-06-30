@@ -34,10 +34,12 @@ import gevent, gevent.pool, gevent.server, gevent.queue, gevent.select
 from gevent.lock import RLock
 from python_lib import *
 from prometheus_client import start_http_server, Counter
+from enum import Enum
 
 import finalAnalysis as FA
 import localization_analysis as LocA
 import weheResultsWriter as bqResultWriter
+import localizationAnalysis as LA
 
 POSTq = gevent.queue.Queue()
 
@@ -528,15 +530,6 @@ def jobDispatcher(q):
             userID, historyCount, testID, prop = q.get()
             pool.apply_async(localizer, args=(userID, historyCount, testID, alpha,))
 
-class myJsonEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, datetime.datetime):
-            obj = obj.isoformat()
-        else:
-            obj = super(myJsonEncoder, self).default(obj)
-        return obj
-
-
 def loadAndReturnResult(userID, historyCount, testID):
     resultsFolder = Configs().get('tmpResultsFolder')
 
@@ -631,6 +624,10 @@ def loadAndReturnResult(userID, historyCount, testID):
             return json.dumps({'success': False, 'error': 'No result found'})
 
 
+class RequestCommandType(Enum):
+    FIND_TOPOLOGY = LA.GetServersAnalyzerRequestHandler
+
+
 def getHandler(args):
     '''
     Handles GET requests.
@@ -649,6 +646,11 @@ def getHandler(args):
         RESULT_REQUEST.labels('nocommand').inc()
         return json.dumps({'success': False, 'error': 'command not provided'})
 
+    for command_type in RequestCommandType:
+        if command == command_type.value.getCommandStr():
+            return command_type.value.handleRequest(args)
+
+    # TODO: refactor next code so that each is handled by separate handler class
     try:
         userID = args['userID'][0].decode('ascii', 'ignore')
     except KeyError as e:
@@ -746,6 +748,8 @@ class Results(tornado.web.RequestHandler):
     def get(self):
         pool = self.application.settings.get('GETpool')
         args = self.request.arguments
+        # Add the client IP to arguments (used mainly by TopologyFinder)
+        args['userIP'] = [bytes(self.request.remote_ip, 'ascii')]
         LOG_ACTION(logger, 'GET:' + str(args))
         pool.apply_async(getHandler, (args,), callback=self._callback)
 
@@ -894,6 +898,8 @@ def main():
     configs.set('bqSchemaFolder', '/var/spool/datatypes')
     configs.set('logsPath', '/tmp/')
     configs.set('analyzerLog', 'analyzerLog.log')
+    configs.set('toposDb', 'https://statistics.measurementlab.net/wehe/v0')
+    configs.set('tmpCacheFolder', '/res/cache/')
     configs.read_args(sys.argv)
     configs.check_for(['analyzerPort'])
 
@@ -915,6 +921,10 @@ def main():
 
     LOG_ACTION(logger, 'Starting server. Configs: ' + str(configs), doPrint=False)
 
+    # Run the processes responsible for the localization test
+    gevent.Greenlet.spawn(LA.runScheduledYTopologiesDownload)
+
+    # Run the processes responsible for the original Wehe xput tests
     gevent.Greenlet.spawn(error_logger, Configs().get('errorsLog'))
 
     g = gevent.Greenlet.spawn(jobDispatcher, POSTq)

@@ -20,10 +20,10 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, ipaddress
+    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, ipaddress, datetime
 
 import multiprocessing, threading, logging, sys, traceback
-
+import bs4, requests, urllib.parse
 
 try:
     import dpkt
@@ -881,3 +881,42 @@ def get_anonymizedIP(ip):
         anonymizedIP = ip
 
     return anonymizedIP
+
+
+#####################################
+##### ADDED BY Zeinab FROM HERE #####
+#####################################
+class AnalyzerRequestHandler:
+
+    @staticmethod
+    def getCommandStr(): return None
+
+    @staticmethod
+    def handleRequest(args): return None
+
+
+# This method is specific to Mlab's statistics platform
+def downloadWebpageContent(url, output_dir):
+    r = requests.get(url)
+
+    if r.status_code != 200:
+        return False
+
+    content = bs4.BeautifulSoup(r.text, "xml")
+    for key in content.find_all("Key"):
+        jsonfile_url = urllib.parse.urljoin(url, key.getText())
+        jsonfile_name = jsonfile_url.split('/')[-1]
+        with open(os.path.join(output_dir, jsonfile_name), 'w') as jsonfile:
+            json.dump(requests.get(jsonfile_url).json(), jsonfile)
+        break
+    return True
+
+
+# moved from replay_analyzerServer.py
+class myJsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            obj = obj.isoformat()
+        else:
+            obj = super(myJsonEncoder, self).default(obj)
+        return obj
