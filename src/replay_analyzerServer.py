@@ -37,7 +37,7 @@ from prometheus_client import start_http_server, Counter
 from enum import Enum
 
 import finalAnalysis as FA
-import localizationAnalysis as LA
+import topologyFinder as topoFinder
 import weheResultsWriter as bqResultWriter
 
 POSTq = gevent.queue.Queue()
@@ -614,7 +614,7 @@ def loadAndReturnResult(userID, historyCount, testID):
 
 
 class RequestCommandType(Enum):
-    FIND_TOPOLOGY = LA.GetServersAnalyzerRequestHandler
+    FIND_TOPOLOGY = topoFinder.GetServersAnalyzerRequestHandler
 
 
 def getHandler(args):
@@ -894,7 +894,7 @@ def main():
     LOG_ACTION(logger, 'Starting server. Configs: ' + str(configs), doPrint=False)
 
     # Run the processes responsible for the localization test
-    gevent.Greenlet.spawn(LA.runScheduledYTopologiesDownload)
+    gevent.Greenlet.spawn(topoFinder.runScheduledYTopologiesDownload)
 
     # Run the processes responsible for the original Wehe xput tests
     gevent.Greenlet.spawn(error_logger, Configs().get('errorsLog'))
