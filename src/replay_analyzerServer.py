@@ -38,6 +38,7 @@ from enum import Enum
 
 import finalAnalysis as FA
 import localizationAnalysis as LA
+import weheResultsWriter as bqResultWriter
 
 POSTq = gevent.queue.Queue()
 
@@ -564,6 +565,13 @@ def loadAndReturnResult(userID, historyCount, testID):
         ks2dVal = str(results[9])
         ks2pVal = str(results[10])
 
+        # Added to support autoloadable wehe data in BQ
+        bqResultWriter.move_result_file(userID, historyCount, testID)
+        bqResultWriter.move_replayInfo(userID, historyCount, testID)
+        bqResultWriter.move_replayInfo(userID, historyCount, 0)
+        bqResultWriter.move_clientXputs(userID, historyCount, testID)
+        bqResultWriter.move_clientXputs(userID, historyCount, 0)
+
         # move related files from tmpResultsFolder to permResultsFolder
         permResultsFolder = getCurrentResultsFolder() + "/{}/".format(userID)
         permDecisionFolder = "{}/decisions/".format(permResultsFolder)
@@ -859,6 +867,7 @@ def main():
     configs.set('alpha', 0.95)
     configs.set('mainPath', '/var/spool/wehe/')
     configs.set('resultsFolder', 'replay/')
+    configs.set('bqSchemaFolder', '/var/spool/datatypes')
     configs.set('logsPath', '/tmp/')
     configs.set('analyzerLog', 'analyzerLog.log')
     configs.set('toposDb', 'https://statistics.measurementlab.net/wehe/v0')

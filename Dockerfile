@@ -4,9 +4,9 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --yes \
    apt-utils gcc libc-dev libcap2-bin libmysqlclient-dev python3 python3-pip \
    tcpdump tcpreplay tshark wireshark scapy netcat
 
-RUN pip3 install timezonefinder future gevent matplotlib multiprocessing_logging  "mysqlclient<2.1.1" \
+RUN pip3 install timezonefinder future gevent matplotlib multiprocessing_logging "mysqlclient<2.1.1" \
   netaddr prometheus_client psutil reverse-geocode reverse-geocoder \
-  "tornado<6.0.0" bs4 requests
+  "tornado<6.0.0" "urllib3<2.0" google-cloud-bigquery bs4 requests
 
 # Allow user nobody to execute tcpdump, and add CAP_NET_RAW capability to the
 # tcpdump binary.
@@ -15,7 +15,7 @@ RUN setcap cap_net_raw=ep /usr/sbin/tcpdump
 
 ADD src /wehe
 ADD replayTraces /replayTraces
-ADD res /res
+ADD uuid_prefix_tag.txt /uuid_prefix_tag.txt
 WORKDIR /wehe
 # You must provide a local hostname argument when you start this image, as well
 # as the net interface to listen on.

@@ -20,6 +20,7 @@ python3 replay_server.py \
   --original_ports=True \
   --certs-folders=/wehe/ssl/ \
   --tcpdumpInt=${INTERFACE} \
+  --uuidPrefixFile=${UUID_PREFIX:-default} \
   &
 
 # The replay analyzer

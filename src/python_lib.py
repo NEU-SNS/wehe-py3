@@ -555,6 +555,10 @@ class Configs(object, metaclass=Singleton):
             if a[0] == 'ConfigFile':
                 self.read_config_file(a[2])
 
+            # if and argument is set to default no need to set it
+            if a[2] == 'default':
+                continue
+
             if a[2] in ['True', 'true']:
                 self.set(a[0], True)
 
