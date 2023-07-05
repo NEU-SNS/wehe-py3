@@ -624,8 +624,9 @@ def loadAndReturnResult(userID, historyCount, testID):
             return json.dumps({'success': False, 'error': 'No result found'})
 
 
-class RequestCommandType(Enum):
+    class RequestCommandType(Enum):
     FIND_TOPOLOGY = LA.GetServersAnalyzerRequestHandler
+    LOCALIZE = ...
 
 
 def getHandler(args):
