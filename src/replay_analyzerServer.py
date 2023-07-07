@@ -42,6 +42,7 @@ import localizationAnalysis as LA
 import weheResultsWriter as bqResultWriter
 
 POSTq = gevent.queue.Queue()
+LOCq = gevent.queue.Queue()
 
 errorlog_q = gevent.queue.Queue()
 
@@ -519,6 +520,13 @@ def jobDispatcher(q):
         userID, historyCount, testID = q.get()
         pool.apply_async(analyzer, args=(userID, historyCount, testID, alpha,))
 
+def locq_processor(q):
+    pool = gevent.pool.Pool()
+    while True:
+        userID, historyCount, testID, serverIP = q.get()
+        measurements = LA.get_peer_measurements(serverIP)
+        pool.apply_async(LA.loc_analyzer, args=(userID, historyCount, testID, serverIP, measurements))
+
 
 def loadAndReturnResult(userID, historyCount, testID):
     resultsFolder = Configs().get('tmpResultsFolder')
@@ -905,13 +913,12 @@ def main():
 
     g = gevent.Greenlet.spawn(jobDispatcher, POSTq)
 
-    l = gevent.Greenlet.spawn()
+    l = gevent.Greenlet.spawn(locq_processor, LOCq)
 
     g.start()
 
-    # TODO: create a queue for localization
-    # loc_g = gevent.Greenlet.spawn(jobDispatcher_loc, POSTq_localization)
-    # loc_g.start()
+    l.start()
+
 
     if configs.is_given('analyzer_tls_port') and configs.is_given('certs_folder'):
         certs_folder = configs.get('certs_folder')
