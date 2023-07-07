@@ -37,9 +37,9 @@ from prometheus_client import start_http_server, Counter
 from enum import Enum
 
 import finalAnalysis as FA
-import localization_analysis as LocA
-import weheResultsWriter as bqResultWriter
+import topologyFinder as topoFinder
 import localizationAnalysis as LA
+import weheResultsWriter as bqResultWriter
 
 POSTq = gevent.queue.Queue()
 
@@ -511,24 +511,14 @@ def analyzer(userID, historyCount, testID, alpha):
     resObjClient = FA.finalAnalyzer(userID, historyCount, testID, resultsFolder,
                                     alpha)
 
-def localizer(userID, hisoryCount, testID, attrs):
-    resultsFolder = Configs().get('tmpResultsFolder')
-    LOG_ACTION(logger, 'localizer: {}, {}, {}'.format(userID, hisoryCount, testID))
-
-    resToBeNamed = LocA.LocalizationAnalysis(userID, hisoryCount, testID, resultsFolder, attrs)
-
 
 def jobDispatcher(q):
     alpha = Configs().get('alpha')
     pool = gevent.pool.Pool()
     while True:
-        params = q.get()
-        if len(params) == 3:
-            userID, historyCount, testID = q.get()
-            pool.apply_async(analyzer, args=(userID, historyCount, testID, alpha,))
-        else:
-            userID, historyCount, testID, prop = q.get()
-            pool.apply_async(localizer, args=(userID, historyCount, testID, alpha,))
+        userID, historyCount, testID = q.get()
+        pool.apply_async(analyzer, args=(userID, historyCount, testID, alpha,))
+
 
 def loadAndReturnResult(userID, historyCount, testID):
     resultsFolder = Configs().get('tmpResultsFolder')
@@ -624,9 +614,9 @@ def loadAndReturnResult(userID, historyCount, testID):
             return json.dumps({'success': False, 'error': 'No result found'})
 
 
-    class RequestCommandType(Enum):
-    FIND_TOPOLOGY = LA.GetServersAnalyzerRequestHandler
-    LOCALIZE = ...
+class RequestCommandType(Enum):
+    FIND_TOPOLOGY = topoFinder.GetServersAnalyzerRequestHandler
+    LOCALIZE = LA.AnalyzerRequestHandler
 
 
 def getHandler(args):
@@ -687,7 +677,6 @@ def getHandler(args):
 
     elif command == 'DPIreset':
         return resetDPI(args)
-    # TODO: Handle get request from other server
 
     else:
         return json.dumps({'success': False, 'error': 'unknown command'})
@@ -722,20 +711,6 @@ def postHandler(args):
     else:
         errorlog_q.put(('unknown command', args))
         return json.dumps({'success': False, 'error': 'unknown command'})
-    
-    # TODO: add a command for localization
-    # try:
-    #     secondServer = args['secondServer'][0].decode('ascii', 'ignore')
-    # except KeyError as e:
-    #     return json.dumps({'success': False, 'missing': str(e)})
-    # except ValueError as e:
-    #     return json.dumps({'success': False, 'value error': str(e)})
-
-    # if command == 'localize':
-    #     POSTq_loc.put((userID, historyCount, testID, secondServer))
-    # else:
-    #     errorlog_q.put(('unknown command', args))
-    #     return json.dumps({'success': False, 'error': 'unknown command'})
 
     LOG_ACTION(logger, 'Returning for POST UserID {} and historyCount {} testID {} ***'.format(
         userID, historyCount, testID))
@@ -923,15 +898,17 @@ def main():
     LOG_ACTION(logger, 'Starting server. Configs: ' + str(configs), doPrint=False)
 
     # Run the processes responsible for the localization test
-    gevent.Greenlet.spawn(LA.runScheduledYTopologiesDownload)
+    gevent.Greenlet.spawn(topoFinder.runScheduledYTopologiesDownload)
 
     # Run the processes responsible for the original Wehe xput tests
     gevent.Greenlet.spawn(error_logger, Configs().get('errorsLog'))
 
     g = gevent.Greenlet.spawn(jobDispatcher, POSTq)
 
+    l = gevent.Greenlet.spawn()
+
     g.start()
-    
+
     # TODO: create a queue for localization
     # loc_g = gevent.Greenlet.spawn(jobDispatcher_loc, POSTq_localization)
     # loc_g.start()
