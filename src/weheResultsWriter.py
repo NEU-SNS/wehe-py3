@@ -48,7 +48,7 @@ ReplayInfo_SCHEMA = [
         bigquery.SchemaField("manufacturer", "STRING"),
         bigquery.SchemaField("carrierName", "STRING"),
         bigquery.SchemaField("os", "RECORD", fields=[
-            bigquery.SchemaField("INCREMENTAL", "INTEGER"),
+            bigquery.SchemaField("INCREMENTAL", "STRING"),
             bigquery.SchemaField("RELEASE", "STRING"),
             bigquery.SchemaField("SDK_INT", "INTEGER"),
         ]),
@@ -152,7 +152,7 @@ def move_replayInfo(userID, historyCount, testID):
 
     info_key_value = {k.name: v for k, v in zip(ReplayInfo_SCHEMA, info)}
     try:
-        info_key_value['metadata'] = ast.literal_eval(info_key_value['metadata'])
+        info_key_value['metadata'] = ast.literal_eval(info_key_value['metadata'].replace('nil', ''))
     except:
         info_key_value['metadata'] = None
 
