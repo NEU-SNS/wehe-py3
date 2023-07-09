@@ -18,7 +18,7 @@ limitations under the License.
 #######################################################################################################
 #######################################################################################################
 '''
-import gevent
+import gevent, gevent.pool, gevent.queue
 import scipy
 
 from python_lib import *
@@ -73,10 +73,47 @@ def get_interval_sizes(min_rtt, duration, mult_start=10, mult_end=50):
     return sints
 
 
+LOCq = gevent.queue.Queue()
+
+
+class PostServerLocalizeRequestHandler(AnalyzerRequestHandler):
+
+    @staticmethod
+    def getCommandStr():
+        return "localize"
+
+    @staticmethod
+    def handleRequest(args):
+        try:
+            userID = args['userID'][0].decode('ascii', 'ignore')
+            historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
+            testID = int(args['testID'][0].decode('ascii', 'ignore'))
+            serverIP = args['serverIP'][0].decode('ascii', 'ignore')
+        except KeyError as e:
+            return json.dumps({'success': False, 'missing': str(e)})
+        except ValueError as e:
+            return json.dumps({'success:': False, 'value error:': str(e)})
+
+        LOCq.put((userID, historyCount, testID, serverIP))
+        LOG_ACTION(logger, 'New localize job added to queue'.format(
+            userID, historyCount, testID, serverIP))
+
+        return json.dumps({'success': True})
+
+
 class LocalizationAnalysis:
+
+    def locq_processor(self, q):
+        pool = gevent.pool.Pool()
+        while True:
+            userID, historyCount, testID, serverIP = q.get()
+            pool.apply_async(self.runLocalizationTest, args=(userID, historyCount, testID, serverIP))
 
     def __init__(self):
         self.server_port_mappings = loadReplaysServerPortMapping()
+
+        l = gevent.Greenlet.spawn(self.locq_processor, LOCq)
+        l.start()
 
     def runLocalizationTest(self, userID, historyCount, testID, secondServerIP):
         results_folder = getCurrentResultsFolder()
@@ -134,6 +171,8 @@ class LocalizationAnalysis:
             corr_results.append({'interval_size': sint, 'statistics': statistic, 'pvalue': pvalue})
 
         return pd.DataFrame(corr_results)
+
+
 
 
 if __name__ == "__main__":
