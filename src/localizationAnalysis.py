@@ -86,6 +86,7 @@ class LocalizationAnalysis:
             return None
 
         replay_name = replayInfo[4]
+        print(self.server_port_mappings)
         server_port = self.server_port_mappings[replay_name.replace('-', '_')]
         pcap_filename = 'dump_server_{}_{}_{}_{}_{}_out.pcap'.format(
             userID, replay_name, replayInfo[5], historyCount, testID)

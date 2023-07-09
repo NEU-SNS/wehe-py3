@@ -23,7 +23,7 @@ import sys, os, configparser, math, json, time, subprocess, \
     random, string, logging.handlers, socket, psutil, hashlib, scapy.all, ipaddress, datetime
 
 import multiprocessing, threading, logging, sys, traceback
-import bs4, requests, urllib.parse
+import bs4, requests, urllib.parse, pickle
 
 try:
     import dpkt
@@ -920,3 +920,23 @@ class myJsonEncoder(json.JSONEncoder):
         else:
             obj = super(myJsonEncoder, self).default(obj)
         return obj
+
+
+def loadReplaysServerPortMapping():
+    server_port_mappings = {}
+
+    replaysFolder = Configs().get('replay_parent_folder')
+    for dir_name in os.listdir(replaysFolder):
+        dir_path = os.path.join(replaysFolder, dir_name)
+        if os.path.isdir(dir_path):
+            pickle_file = '{}/{}.pcap_server_all.pickle'.format(dir_path, dir_name)
+
+            try:
+                with open(pickle_file, 'br') as server_pickle:
+                    _, _, _, udpServers, tcpServerPorts, _ = pickle.load(server_pickle)
+                if tcpServerPorts:
+                    server_port_mappings[dir_name] = int(tcpServerPorts[0])
+            except:
+                continue
+
+    return server_port_mappings
