@@ -24,6 +24,48 @@ from python_lib import *
 from google.cloud import bigquery
 import json, ast
 
+
+def convert_data_to_dict(schema, data):
+    data_key_value = {k.name: v for k, v in zip(schema, data)}
+    for k in schema:
+        if k.fields:
+            try:
+                casted_value = ast.literal_eval(str(data_key_value[k.name]))
+                if isinstance(casted_value, dict):
+                    data_key_value[k.name] = casted_value
+                else:
+                    data_key_value[k.name] = convert_data_to_dict(k.fields, casted_value)
+            except:
+                data_key_value[k.name] = None
+        elif k.name not in data_key_value.keys():
+            data_key_value[k.name] = None
+    return data_key_value
+
+
+def check_schema_field_type(value, field_type, mode):
+    if mode == 'REPEATED':
+        try: return [check_schema_field_type(v, field_type, '') for v in value]
+        except: return None
+    if field_type == 'INTEGER':
+        try: return int(value)
+        except ValueError: return None
+    if field_type == 'FLOAT':
+        try: return float(value)
+        except ValueError: return None
+    if field_type == 'BOOLEAN':
+        try: return bool(value)
+        except ValueError: return None
+    return value
+
+
+def check_schema(key_val_data, schema):
+    for k in schema:
+        if k.fields:
+            check_schema(key_val_data[k.name], k.fields)
+        else:
+            key_val_data[k.name] = check_schema_field_type(key_val_data[k.name], k.field_type, k.mode)
+
+
 # Wehe results have four datatypes:
 ReplayInfo_DATATYPE = 'replayInfo1'
 ReplayInfo_SCHEMA = [
@@ -33,7 +75,7 @@ ReplayInfo_SCHEMA = [
     bigquery.SchemaField("clientIP2", "STRING"),
     bigquery.SchemaField("replayName", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("extraString", "STRING", description="Extra string sent from the client (not used)"),
-    bigquery.SchemaField("historyCount", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("historyCount", "INTEGER", mode="REQUIRED"),
     bigquery.SchemaField("testID", "STRING", mode="REQUIRED",
                          description="Replay type (0 for original and 1 for bit-inverted replay)"),
     bigquery.SchemaField("exception", "STRING", description="The exception if any during the test"),
@@ -71,7 +113,7 @@ ReplayInfo_SCHEMA = [
 ClientXputs_DATATYPE = 'clientXputs1'
 ClientXputs_SCHEMA = [
     bigquery.SchemaField("userID", "STRING", mode="REQUIRED"),
-    bigquery.SchemaField("historyCount", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("historyCount", "INTEGER", mode="REQUIRED"),
     bigquery.SchemaField("testID", "STRING", mode="REQUIRED",
                          description="Replay type (0 for original and 1 for bit-inverted replay)"),
     bigquery.SchemaField("xputSamples", "FLOAT", mode="REPEATED", description="throughput samples collected at client"),
@@ -82,7 +124,7 @@ ClientXputs_SCHEMA = [
 Decisions_DATATYPE = 'decisions1'
 Decisions_SCHEMA = [
     bigquery.SchemaField("userID", "STRING", mode="REQUIRED"),
-    bigquery.SchemaField("historyCount", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("historyCount", "INTEGER", mode="REQUIRED"),
     bigquery.SchemaField("testID", "STRING", mode="REQUIRED",
                          description="Replay type (0 for original and 1 for bit-inverted replay)"),
     bigquery.SchemaField("avgXputDiffPct", "FLOAT",
@@ -138,7 +180,7 @@ def create_decisions_schema():
 
 
 # Copy files from temporary to permanent directory
-# TODO: currenlty we only copy the files (after full transision to jostler change operation to move)
+# TODO: currenlty we only copy the files (after full transition to jostler change the operation to move)
 def move_replayInfo(userID, historyCount, testID):
     tmpReplayInfoFile = '{}/{}/replayInfo/replayInfo_{}_{}_{}.json'.format(
         Configs().get('tmpResultsFolder'), userID, userID, historyCount, testID
@@ -150,11 +192,8 @@ def move_replayInfo(userID, historyCount, testID):
     with open(tmpReplayInfoFile, 'r') as readFile:
         info = json.load(readFile)
 
-    info_key_value = {k.name: v for k, v in zip(ReplayInfo_SCHEMA, info)}
-    try:
-        info_key_value['metadata'] = ast.literal_eval(info_key_value['metadata'].replace('nil', ''))
-    except:
-        info_key_value['metadata'] = None
+    info_key_value = convert_data_to_dict(ReplayInfo_SCHEMA, info)
+    check_schema(info_key_value, ReplayInfo_SCHEMA)
 
     with open(permReplayInfoFile, 'w') as f:
         f.write(json.dumps(info_key_value))
@@ -171,9 +210,9 @@ def move_clientXputs(userID, historyCount, testID):
     with open(tmpClientXputsFile, 'r') as readFile:
         xputs = json.load(readFile)
 
-    xputs_key_value = {
-        'userID': userID, 'historyCount': historyCount, 'testID': testID, 'xputSamples': xputs[0], 'intervals': xputs[1]
-    }
+    xputs_key_value = convert_data_to_dict(ClientXputs_SCHEMA, [userID, historyCount, testID, xputs[0], xputs[1]])
+    check_schema(xputs_key_value, ClientXputs_SCHEMA)
+
     with open(permClientXputsFile, 'w') as f:
         f.write(json.dumps(xputs_key_value))
 
@@ -189,12 +228,8 @@ def move_result_file(userID, historyCount, testID):
     with open(tmpDecisionsFile, 'r') as readFile:
         results = json.load(readFile)
 
-    results = [userID, historyCount, testID] + results
-    results_key_value = {k.name: v for k, v in zip(Decisions_SCHEMA, results)}
-
-    key_stats = ['max', 'min', 'average', 'median', 'std']
-    results_key_value['originalXputStats'] = {k: v for k, v in zip(key_stats, results_key_value['originalXputStats'])}
-    results_key_value['controlXputStats'] = {k: v for k, v in zip(key_stats, results_key_value['controlXputStats'])}
+    results_key_value = convert_data_to_dict(Decisions_SCHEMA, [userID, historyCount, testID] + results)
+    check_schema(results_key_value, Decisions_SCHEMA)
 
     with open(permDecisionsFile, 'w') as f:
         f.write(json.dumps(results_key_value))
