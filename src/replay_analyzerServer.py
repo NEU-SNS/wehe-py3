@@ -39,6 +39,7 @@ from enum import Enum
 import finalAnalysis as FA
 import localizationAnalysis as LA
 import topologyFinder as topoFinder
+import measurementAnalysis as measurementAnalysis
 import weheResultsWriter as bqResultWriter
 
 POSTq = gevent.queue.Queue()
@@ -616,7 +617,8 @@ def loadAndReturnResult(userID, historyCount, testID):
 
 class RequestCommandType(Enum):
     FIND_TOPOLOGY = topoFinder.GetServersAnalyzerRequestHandler
-    LOCALIZE = LA.PostServerLocalizeRequestHandler
+    GET_MEASUREMENTS = measurementAnalysis.GetMeasurementsAnalyzerRequestHandler
+    # LOCALIZE = LA.PostLocalizeRequestHandler
 
 
 def getHandler(args):
@@ -897,7 +899,7 @@ def main():
 
     # Run the processes responsible for the localization test
     gevent.Greenlet.spawn(topoFinder.runScheduledYTopologiesDownload)
-    gevent.Greenlet.spawn(LA.LocalizationAnalysis.__init__)
+    gevent.Greenlet.spawn(LA.LocalizationAnalysis().run)
 
     # Run the processes responsible for the original Wehe xput tests
     gevent.Greenlet.spawn(error_logger, Configs().get('errorsLog'))

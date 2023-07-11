@@ -21,17 +21,27 @@ limitations under the License.
 import gevent, gevent.pool, gevent.queue
 import scipy
 
+from multiprocessing.pool import ThreadPool
+
+
 from python_lib import *
 from measurementAnalysis import *
 
+sys.path.append('testHypothesis')
+import testHypothesis as TH
 
-def castGETResultObject(value, type):
+elogger = logging.getLogger('errorLogger')
+loc_logger = logging.getLogger('localization_analysis')
+
+
+# This part implements helper method to exchange measurement between servers
+def cast_GETResult_object(value, type):
     if str(type) == str(pd.DataFrame):
         return pd.DataFrame(value['data'], columns=value['columns'])
     return value
 
 
-def sendGETMeasurementRequest(serverIP, args):
+def send_GETMeasurement_request(serverIP, args):
     analyzer_port = Configs().get('analyzer_tls_port')
     url = 'https://{}:{}/Results'.format(serverIP, analyzer_port)
     cert_file = '{}/ca.crt'.format(Configs().get('certs_folder'))
@@ -40,139 +50,206 @@ def sendGETMeasurementRequest(serverIP, args):
 
     if response['success']:
         measurements = response['measurements']
-        return castGETResultObject(measurements['result'], measurements['resultType'])
+        return cast_GETResult_object(measurements['result'], measurements['resultType'])
     return None
 
 
-def load_replayInfo(userID, historyCount, testID):
-    replayInfoFile = '{}/{}/replayInfo/replayInfo_{}_{}_{}.json'.format(
-        getCurrentResultsFolder(), userID, userID, historyCount, testID)
+def execute_methods_in_parallel(funcs):
+    pool = ThreadPool(processes=len(funcs))
+    async_results = [pool.apply_async(func=f['cls'], kwds=f['kwargs']) for f in funcs]
+    return [async_result.get() for async_result in async_results]
 
-    if not os.path.exists(replayInfoFile):
+
+# Next part implements the statistical tests for localization
+def get_interval_sizes(min_rtt, duration, mult_start=30, mult_end=50, min_nb_intervals=30):
+    interval_sizes = []
+    for i in np.arange(mult_start, mult_end + 1, 1):
+        if (duration / (min_rtt * i)) >= min_nb_intervals:
+            interval_sizes.append(round(min_rtt * i, 3))
+    return interval_sizes
+
+
+def compute_perf_correlation(pair_perf, interval_size):
+    loss_ratios = pair_perf.compute_perfs(interval_size)
+    statistic, pvalue = scipy.stats.spearmanr(loss_ratios.perf_p1, loss_ratios.perf_p2, alternative='greater')
+    return {'interval_size': interval_size, 'statistics': statistic, 'pvalue': pvalue}
+
+
+def detect_per_service_policing(userID, historyCount, testID, secondServerIP, resultsFolder, server_port_mappings):
+    pcap_path = get_pcap_filename(userID, historyCount, testID, resultsFolder)
+    replayInfo = load_replayInfo(userID, historyCount, testID, resultsFolder)
+
+    if (replayInfo is None) or (pcap_path is None):
+        elogger.error('FAILED localization test for {} {}: result files missing'.format(userID, historyCount))
         return None
 
-    with open(replayInfoFile, 'r') as readFile:
-        return json.load(readFile)
+    server_port = server_port_mappings[replayInfo[4].replace('-', '_')]
+
+    # step 1: measurement collection: the initial RTT + loss events
+    # initial RTT
+    command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
+                    'measurementType': 'initialRTT', 'kwargs': json.dumps({'serverPort': server_port})}
+    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'args': command_args}}
+    local_f = {'cls': get_iRTT_from_pcap, 'kwargs': {'pcap_file': pcap_path, 'server_port': server_port}}
+    iRTTs = execute_methods_in_parallel([local_f, remote_f])
+
+    # loss events
+    command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
+                    'measurementType': 'lossEvents', 'kwargs': json.dumps({'serverPort': server_port})}
+    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'args': command_args}}
+    local_f = {'cls': get_lossEvents_from_pcap, 'kwargs': {'pcap_file': pcap_path, 'server_port': server_port}}
+    loss_dfs = execute_methods_in_parallel([local_f, remote_f])
+
+    # check all remote calls are successful so far
+    if (None in iRTTs) or (np.any([loss_df is None for loss_df in loss_dfs])):
+        elogger.error('FAILED localization test for {} {}: collecting measurements'.format(userID, historyCount))
+        return None
+
+    # step 2: compute the interval sizes (multiples of iRTT)
+    min_rtt = min(iRTTs)
+    duration = min([loss_df.timestamp.iloc[-1] for loss_df in loss_dfs])
+    interval_sizes = get_interval_sizes(min_rtt, duration)
+
+    if len(interval_sizes) == 0:
+        elogger.error('FAILED localization test for {} {}: not enough measurements'.format(userID, historyCount))
+        return None
+
+    # step 3: for each interval size: compute loss ratios + apply spearman corr ratio
+    loss_pair_perf = PathPairPerf(
+        [LossPerf(pkts_df, 0, duration) for pkts_df in loss_dfs],
+        filter_f=(lambda perfs: perfs[(perfs.perf_p1 > 0) | (perfs.perf_p2 > 0)])
+    )
+
+    corr_funcs = []
+    for interval_size in interval_sizes:
+        corr_funcs.append({'cls': compute_perf_correlation,
+                           'kwargs': {'pair_perf': loss_pair_perf, 'interval_size': interval_size}})
+    corr_results = execute_methods_in_parallel(corr_funcs)
+
+    return pd.DataFrame(corr_results)
 
 
-def execute_methods_in_parallel(funcs):
-    gs = [gevent.Greenlet.spawn(f['cls'], **f['kwargs']) for f in funcs]
-    for g in gs:
-        g.join()
-    return [g.value for g in gs]
+def detect_per_service_plan_throttling(userID, historyCount, testID, secondServerIP, resultsFolder, alpha):
+    # step 1: measurement collection: client side xputs
+    command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
+                    'measurementType': 'clientXputs', 'kwargs': json.dumps({})}
+    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'args': command_args}}
+    local_f = {'cls': load_client_xputs,
+               'kwargs': {'userID': userID, 'historyCount': historyCount, 'testID': testID, 'resultsFolder': resultsFolder}}
+    xputs = execute_methods_in_parallel([local_f, remote_f])
 
+    # check all remote calls are successful so far
+    if None in xputs:
+        elogger.error('FAILED localization test for {} {}: collecting measurements'.format(userID, historyCount))
+        return None
 
-MIN_NB_INTERVALS = 30
+    # step 2: sum the simultaneous replay throughput
+    xputs_s1, dur_s1 = xputs[0]
+    xputs_s2, dur_s2 = xputs[1]
+    sim_xputs_sum = [sum(x) for x in zip(xputs_s1, xputs_s2)]
 
+    # step 3: get single replay xput
+    # TODO: implement retrieve client xputs for the single replay test
+    single_test_xputs = []
 
-def get_interval_sizes(min_rtt, duration, mult_start=10, mult_end=50):
-    sints = []
-    for i in np.arange(mult_start, mult_end+1, 1):
-        if (duration/(min_rtt*i)) >= MIN_NB_INTERVALS:
-            sints.append(round(min_rtt * i, 3))
-    return sints
+    # step 3: test if the throughput sum have the same distribution as the single replay xput
+    results = TH.doTests(sim_xputs_sum, single_test_xputs, alpha)
 
-
-LOCq = gevent.queue.Queue()
-
-
-class PostServerLocalizeRequestHandler(AnalyzerRequestHandler):
-
-    @staticmethod
-    def getCommandStr():
-        return "localize"
-
-    @staticmethod
-    def handleRequest(args):
-        try:
-            userID = args['userID'][0].decode('ascii', 'ignore')
-            historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
-            testID = int(args['testID'][0].decode('ascii', 'ignore'))
-            serverIP = args['serverIP'][0].decode('ascii', 'ignore')
-        except KeyError as e:
-            return json.dumps({'success': False, 'missing': str(e)})
-        except ValueError as e:
-            return json.dumps({'success:': False, 'value error:': str(e)})
-
-        LOCq.put((userID, historyCount, testID, serverIP))
-        LOG_ACTION(logger, 'New localize job added to queue'.format(
-            userID, historyCount, testID, serverIP))
-
-        return json.dumps({'success': True})
+    areaTest = results[0]
+    ks2ratio = results[1]
+    xputAvg1, xputAvg2 = results[4][2], results[5][2]
+    ks2dVal, ks2pVal = results[9], results[10]
+    return {'areaTest': areaTest, 'ks2ratio': ks2ratio, 'xputAvg1': xputAvg1, 'xputAvg2': xputAvg2,
+            'ks2dVal': ks2dVal, 'ks2pVal': ks2pVal}
 
 
 class LocalizationAnalysis:
 
-    def locq_processor(self, q):
+    def __init__(self):
+        # TODO: add the configuration
+        self.min_nb_intervals = 30
+        self.false_positive_rate = 0.05
+        self.alpha = 0.95
+
+        self.server_port_mappings = loadReplaysServerPortMapping()
+        self.loc_queue = gevent.queue.Queue()
+
+    def add_job(self, userID, historyCount, testID, serverIP):
+        self.loc_queue.put((userID, historyCount, testID, serverIP))
+
+    def loc_queue_processor(self, q):
         pool = gevent.pool.Pool()
         while True:
             userID, historyCount, testID, serverIP = q.get()
-            pool.apply_async(self.runLocalizationTest, args=(userID, historyCount, testID, serverIP))
+            pool.apply_async(self.localizer, args=(userID, historyCount, testID, serverIP))
 
-    def __init__(self):
-        self.server_port_mappings = loadReplaysServerPortMapping()
+    def run(self):
+        loc_thread = gevent.Greenlet.spawn(self.loc_queue_processor, self.loc_queue)
+        loc_thread.start()
 
-        l = gevent.Greenlet.spawn(self.locq_processor, LOCq)
-        l.start()
+    def localizer(self, userID, historyCount, testID, secondServerIP):
+        resultsFolder = getCurrentResultsFolder()
+        LOG_ACTION(logger, 'localizer:{}, {}, {}'.format(userID, historyCount, testID))
 
-    def runLocalizationTest(self, userID, historyCount, testID, secondServerIP):
-        results_folder = getCurrentResultsFolder()
+        # localizer will try to test for different differentiation method
+        # first per service plan throttling (i.e., ISP handle every plan traffic in dedicated queue)
+        # results1 = detect_per_service_plan_throttling(
+        #     userID, historyCount, testID, secondServerIP, resultsFolder, self.alpha)
 
-        replayInfo = load_replayInfo(userID, historyCount, testID)
-        if not replayInfo:
-            return None
+        # second per service aggregate policing (i.e., ISP handle all traffic of same service in same shallow queue)
+        results2 = detect_per_service_policing(
+            userID, historyCount, testID, secondServerIP, resultsFolder, self.server_port_mappings)
 
-        replay_name = replayInfo[4]
-        print(self.server_port_mappings)
-        server_port = self.server_port_mappings[replay_name.replace('-', '_')]
-        pcap_filename = 'dump_server_{}_{}_{}_{}_{}_out.pcap'.format(
-            userID, replay_name, replayInfo[5], historyCount, testID)
-        pcap_path = '{}/{}/tcpdumpsResults/{}'.format(results_folder, userID, pcap_filename)
-
-        # step 1: get the initial RTT from both servers
-        command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
-                        'measurementType': 'initialRTT',
-                        'kwargs': json.dumps({'serverPort': server_port, 'pcapFilename': pcap_filename})}
-        remote_f = {'cls': sendGETMeasurementRequest, 'kwargs': {'serverIP': secondServerIP, 'args': command_args}}
-        local_f = {'cls': get_iRTT_from_pcap, 'kwargs': {'pcap_file': pcap_path, 'server_port': server_port}}
-        iRTTs = execute_methods_in_parallel([local_f, remote_f])
-
-        # step 2: get loss events from both servers
-        command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
-                        'measurementType': 'lossEvents',
-                        'kwargs': json.dumps({'serverPort': server_port, 'pcapFilename': pcap_filename})}
-        remote_f = {'cls': sendGETMeasurementRequest, 'kwargs': {'serverIP': secondServerIP, 'args': command_args}}
-        local_f = {'cls': get_lossEvents_from_pcap, 'kwargs': {'pcap_file': pcap_path, 'server_port': server_port}}
-        loss_dfs = execute_methods_in_parallel([local_f, remote_f])
-
-        for i, df in enumerate(loss_dfs):
-            df.to_csv('~/Desktop/df_{}.csv'.format(i))
-
-        # check all remote calls are successful so far
-        if (None in iRTTs) or (np.any([loss_df is None for loss_df in loss_dfs])):
-            print('data missing')
-            return None
-
-        # step 3: compute the interval sizes (multiples of iRTT)
-        min_rtt = min(iRTTs)
-        duration = min([loss_df.timestamp.iloc[-1] for loss_df in loss_dfs])
-        sints = get_interval_sizes(min_rtt, duration)
-        print(min_rtt, duration, sints)
-
-        # step 4: compute loss ratios based on interval sizes + apply spearman corr ratio
-        loss_pair_perf = PathPairPerf(
-            [LossPerf(pkts_df, 0, duration) for pkts_df in loss_dfs],
-            filter_f=(lambda perfs: perfs[(perfs.perf_p1 > 0) | (perfs.perf_p2 > 0)])
-        )
-        corr_results = []
-        for sint in sints:
-            loss_ratios = loss_pair_perf.compute_perfs(sint)
-            statistic, pvalue = scipy.stats.spearmanr(loss_ratios.perf_p1, loss_ratios.perf_p2, alternative='greater')
-            corr_results.append({'interval_size': sint, 'statistics': statistic, 'pvalue': pvalue})
-
-        return pd.DataFrame(corr_results)
+        return {'columns': results2.columns.tolist(), 'data': results2.values.tolist()}
 
 
+# locAnalyzer = LocalizationAnalysis()
+#
+#
+# class PostLocalizeRequestHandler(AnalyzerRequestHandler):
+#
+#     @staticmethod
+#     def getCommandStr():
+#         return "localize"
+#
+#     @staticmethod
+#     def handleRequest(args):
+#         try:
+#             userID = args['userID'][0].decode('ascii', 'ignore')
+#             historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
+#             testID = int(args['testID'][0].decode('ascii', 'ignore'))
+#             serverIP = args['serverIP'][0].decode('ascii', 'ignore')
+#         except KeyError as e:
+#             return json.dumps({'success': False, 'missing': str(e)})
+#         except ValueError as e:
+#             return json.dumps({'success:': False, 'value error:': str(e)})
+#
+#         locAnalyzer.add_job(userID, historyCount, testID, serverIP)
+#         LOG_ACTION(logger, 'New localize job added to queue'.format(userID, historyCount, testID, serverIP))
+#
+#         return json.dumps({'success': True})
+#
+#
+# class GETLocalizeResultRequestHandler(AnalyzerRequestHandler):
+#
+#     @staticmethod
+#     def getCommandStr():
+#         return "localizeResult"
+#
+#     @staticmethod
+#     def handleRequest(args):
+#         try:
+#             userID = args['userID'][0].decode('ascii', 'ignore')
+#             historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
+#             testID = int(args['testID'][0].decode('ascii', 'ignore'))
+#         except KeyError as e:
+#             return json.dumps({'success': False, 'missing': str(e)})
+#         except ValueError as e:
+#             return json.dumps({'success:': False, 'value error:': str(e)})
+#
+#         # TODO: add action that reads localize results file and return the results
+#
+#         return json.dumps({'success': True})
 
 
 if __name__ == "__main__":
@@ -182,7 +259,14 @@ if __name__ == "__main__":
     Configs().set('resultsFolder', '/Users/shmeis/Desktop/PHD/Research/code/wehe-py3/var/spool/wehe/replay/')
 
     userID, historyCount, testID = '@49be17rg3', 19, 0
+    # print(get_pcap_filename(userID, historyCount, testID, getCurrentResultsFolder()))
     s2_ip = '34.28.122.46'
     localizer = LocalizationAnalysis()
     print('start test2')
-    print(localizer.runLocalizationTest(userID, historyCount, testID, s2_ip))
+    print(localizer.localizer(userID, historyCount, testID, s2_ip))
+    # x1, x2, x3 = detect_per_service_plan_throttling(userID, historyCount, testID, s2_ip, getCurrentResultsFolder(), 0.05)
+    # print(x1[1:10], x2[1:10], x3[1:10])
+
+    # df = pd.read_csv('/Users/shmeis/Desktop/df_1.csv')
+    # df.set_index('timestamp', inplace=True)
+    # print(df[0:1])

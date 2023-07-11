@@ -36,6 +36,7 @@ To kill the server:
 #######################################################################################################
 #######################################################################################################
 '''
+import os
 
 import gevent.monkey
 import tracemalloc
@@ -207,6 +208,9 @@ class ClientObj(object):
 
             decisionsFolder = self.targetFolder + 'decisions/'
             os.makedirs(decisionsFolder)
+
+            localizeDecisionsFolder = self.targetFolder + 'localizeDecisions/'
+            os.makedirs(localizeDecisionsFolder)
 
     def setDump(self, dumpName):
         self.dumpName = dumpName

@@ -18,6 +18,7 @@ limitations under the License.
 #######################################################################################################
 #######################################################################################################
 '''
+import glob
 import math
 import os.path
 
@@ -47,6 +48,8 @@ def pcap_to_df(pcap_path, fields,pkt_filter=None):
 class Performance:
     def __init__(self, pkts_df, start_t, end_t, perf_func):
         self.pkts_df = pkts_df
+        self.pkts_df.index = self.pkts_df['timestamp']
+
         self.start_t = start_t
         self.end_t = end_t
         self.perf_func = perf_func
@@ -67,7 +70,7 @@ class RetransmissionPerf(Performance):
 
     @staticmethod
     def compute_retransmission_ratio(pkts_df, interval):
-        df = pkts_df[pkts_df['timestamp'].between(interval[0], interval[1])]
+        df = pkts_df[interval[0]:interval[1]]
         if df.shape[0] == 0:
             return -1
         return df[df['is_retransmitted']]['pkt_len'].sum() / df['pkt_len'].sum()
@@ -79,7 +82,7 @@ class LossPerf(Performance):
 
     @staticmethod
     def compute_loss_ratio(pkts_df, interval):
-        df = pkts_df[pkts_df['timestamp'].between(interval[0], interval[1])]
+        df = pkts_df[interval[0]:interval[1]]
         if df.shape[0] == 0:
             return -1
         return df[df['is_lost']]['pkt_len'].sum() / df['pkt_len'].sum()
@@ -91,7 +94,7 @@ class ThroughputPerf(Performance):
 
     @staticmethod
     def compute_xput(pkts_df, interval):
-        df = pkts_df[pkts_df['timestamp'].between(interval[0], interval[1])]
+        df = pkts_df[interval[0]:interval[1]]
         if df.shape[0] == 0:
             return -1
         return round((df['pkt_len'].sum()) / (interval[1] - interval[0]) * 8e-6, 3)
@@ -138,18 +141,59 @@ def get_lossRatios_from_pcap(pcap_file, server_port, interval_size):
     return LossPerf(loss_df, 0, loss_df.time.iloc[-1]).compute_perfs(interval_size)
 
 
-def get_measurements(measurementType, pcap_file, server_port, kwargs):
+def load_client_xputs(userID, historyCount, testID, resultsFolder):
+    xputFile = '{}/{}/clientXputs/Xput_{}_{}_{}.json'.format(
+        resultsFolder, userID, userID, historyCount, testID)
+
+    if not os.path.exists(xputFile):
+        return None
+
+    with open(xputFile, 'r') as readFile:
+        return json.load(readFile)
+
+
+def load_replayInfo(userID, historyCount, testID, resultsFolder):
+    replayInfoFile = '{}/{}/replayInfo/replayInfo_{}_{}_{}.json'.format(
+        resultsFolder, userID, userID, historyCount, testID)
+
+    if not os.path.exists(replayInfoFile):
+        return None
+
+    with open(replayInfoFile, 'r') as readFile:
+        return json.load(readFile)
+
+
+def get_pcap_filename(userID, historyCount, testID, resultsFolder):
+    tcpdumpsResults_dir = os.path.join(resultsFolder, userID, 'tcpdumpsResults')
+    regex_pcap = "*_{}_*_{}_{}*".format(userID, historyCount, testID)
+    try:
+        return glob.glob('{}/{}'.format(tcpdumpsResults_dir, regex_pcap))[0]
+    except:
+        return None
+
+
+def get_measurements(measurementType, userID, historyCount, testID, kwargs, resultsFolder):
+    # first client based measurements
+    if measurementType == 'clientXputs':
+        xputs = load_client_xputs(userID, historyCount, testID, resultsFolder)
+        return {'type': measurementType, 'resultType': str(type(xputs)), 'result': xputs}
+
+    # second measurements based on pcap files
+    pcap_file = get_pcap_filename(userID, historyCount, testID, resultsFolder)
+    if pcap_file is None:
+        raise FileNotFoundError
+
     if measurementType == 'initialRTT':
-        result = get_iRTT_from_pcap(pcap_file, server_port)
+        result = get_iRTT_from_pcap(pcap_file, kwargs['serverPort'])
         return {'type': measurementType, 'resultType': str(type(result)), 'result': result}
 
     if measurementType == 'lossEvents':
-        loss_df = get_lossEvents_from_pcap(pcap_file, server_port)
+        loss_df = get_lossEvents_from_pcap(pcap_file, kwargs['serverPort'])
         result = {'columns': loss_df.columns.tolist(), 'data': loss_df.values.tolist()}
         return {'type': measurementType, 'resultType': str(type(loss_df)), 'result': result}
 
     if measurementType == 'lossRatios':
-        perf_df = get_lossRatios_from_pcap(pcap_file, server_port, kwargs['intervalSize'])
+        perf_df = get_lossRatios_from_pcap(pcap_file, kwargs['serverPort'], kwargs['intervalSize'])
         result = {'columns': perf_df.columns.tolist(), 'data': perf_df.values.tolist()}
         return {'type': measurementType, 'resultType': str(type(perf_df)), 'result': result}
 
@@ -175,25 +219,24 @@ class GetMeasurementsAnalyzerRequestHandler(AnalyzerRequestHandler):
 
         # compute and return measurement
         try:
-            server_port = kwargs['serverPort']
-            pcap_path = '{}/{}/tcpdumpsResults/{}'.format(getCurrentResultsFolder(), userID, kwargs['pcapFilename'])
-            measurements = get_measurements(measurementType, pcap_path, server_port, kwargs)
+            resultsFolder = getCurrentResultsFolder()
+            measurements = get_measurements(measurementType, userID, historyCount, testID, kwargs, resultsFolder)
         except Exception as e:
             return json.dumps({'success': False, 'error': str(e)})
 
         return json.dumps({'success': True, 'measurements': measurements}, cls=myJsonEncoder)
 
 
-if __name__ == "__main__":
-    pcap_file = '/Users/shmeis/Desktop/PHD/Research/throttling-classification/data/wehe_records_dir/td_cases' \
-                '/case_0sbQ0Imp63_17/dump_server_0sbQ0Imp63_DisneyPlusRandom-05082020_DiffDetector_17_1_out.pcap'
+# if __name__ == "__main__":
+    # pcap_file = '/Users/shmeis/Desktop/PHD/Research/throttling-classification/data/wehe_records_dir/td_cases' \
+    #             '/case_0sbQ0Imp63_17/dump_server_0sbQ0Imp63_DisneyPlusRandom-05082020_DiffDetector_17_1_out.pcap'
 
-    df = get_lossEvents_from_pcap(pcap_file, 443)
-    df2json = {'columns': df.columns.tolist(), 'data': df.values.tolist()}
-    print(df2json)
-    json2df = pd.DataFrame(df2json['data'], columns=df2json['columns'])
-    print(json2df)
-    print(str(type(json2df)), str(type(json2df)) == str(pd.DataFrame))
+    # df = get_lossEvents_from_pcap(pcap_file, 443)
+    # df2json = {'columns': df.columns.tolist(), 'data': df.values.tolist()}
+    # print(df2json)
+    # json2df = pd.DataFrame(df2json['data'], columns=df2json['columns'])
+    # print(json2df)
+    # print(str(type(json2df)), str(type(json2df)) == str(pd.DataFrame))
     # print(get_lossRatios_from_pcap(pcap_file, 443, 0.5))
     # print(get_iRTT_from_pcap(pcap_file, 443))
     #
