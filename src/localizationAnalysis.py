@@ -61,6 +61,10 @@ def execute_methods_in_parallel(funcs):
 
 
 # Next part implements the statistical tests for localization
+def compute_xput_stats(xputs):
+    return max(xputs), min(xputs), np.average(xputs), np.median(xputs), np.std(xputs)
+
+
 def get_interval_sizes(min_rtt, duration, mult_start=30, mult_end=50, min_nb_intervals=30):
     interval_sizes = []
     for i in np.arange(mult_start, mult_end + 1, 1):
@@ -72,7 +76,7 @@ def get_interval_sizes(min_rtt, duration, mult_start=30, mult_end=50, min_nb_int
 def compute_perf_correlation(pair_perf, interval_size):
     loss_ratios = pair_perf.compute_perfs(interval_size)
     statistic, pvalue = scipy.stats.spearmanr(loss_ratios.perf_p1, loss_ratios.perf_p2, alternative='greater')
-    return {'interval_size': interval_size, 'statistics': statistic, 'pvalue': pvalue}
+    return {'intervalSize': interval_size, 'corrVal': statistic, 'corrPVal': pvalue}
 
 
 def detect_per_service_policing(userID, historyCount, testID, secondServerIP, resultsFolder, server_port_mappings):
@@ -115,9 +119,9 @@ def detect_per_service_policing(userID, historyCount, testID, secondServerIP, re
         return None
 
     # step 3: for each interval size: compute loss ratios + apply spearman corr ratio
+    loss_perfs = [LossPerf(pkts_df, 0, duration) for pkts_df in loss_dfs]
     loss_pair_perf = PathPairPerf(
-        [LossPerf(pkts_df, 0, duration) for pkts_df in loss_dfs],
-        filter_f=(lambda perfs: perfs[(perfs.perf_p1 > 0) | (perfs.perf_p2 > 0)])
+        loss_perfs, filter_f=(lambda perfs: perfs[(perfs.perf_p1 > 0) | (perfs.perf_p2 > 0)])
     )
 
     corr_funcs = []
@@ -126,7 +130,12 @@ def detect_per_service_policing(userID, historyCount, testID, secondServerIP, re
                            'kwargs': {'pair_perf': loss_pair_perf, 'interval_size': interval_size}})
     corr_results = execute_methods_in_parallel(corr_funcs)
 
-    return pd.DataFrame(corr_results)
+    results_as_dict = {
+        'simReplay1AvgLoss': loss_perfs[0].compute_total_perf(),
+        'simReplay2AvgLoss': loss_perfs[1].compute_total_perf(),
+        'spearmanCorrStats': corr_results
+    }
+    return results_as_dict
 
 
 def detect_per_service_plan_throttling(userID, historyCount, testID, secondServerIP, resultsFolder, alpha):
@@ -145,22 +154,28 @@ def detect_per_service_plan_throttling(userID, historyCount, testID, secondServe
 
     # step 2: sum the simultaneous replay throughput
     xputs_s1, dur_s1 = xputs[0]
+    (xputMax1, xputMin1, xputAvg1, xputMed1, xputStd1) = compute_xput_stats(xputs_s1)
+
     xputs_s2, dur_s2 = xputs[1]
+    (xputMax2, xputMin2, xputAvg2, xputMed2, xputStd2) = compute_xput_stats(xputs_s2)
+
     sim_xputs_sum = [sum(x) for x in zip(xputs_s1, xputs_s2)]
 
     # step 3: get single replay xput
     # TODO: implement retrieve client xputs for the single replay test
-    single_test_xputs = []
-
-    # step 3: test if the throughput sum have the same distribution as the single replay xput
+    single_test_xputs = sim_xputs_sum
     results = TH.doTests(sim_xputs_sum, single_test_xputs, alpha)
 
-    areaTest = results[0]
-    ks2ratio = results[1]
-    xputAvg1, xputAvg2 = results[4][2], results[5][2]
-    ks2dVal, ks2pVal = results[9], results[10]
-    return {'areaTest': areaTest, 'ks2ratio': ks2ratio, 'xputAvg1': xputAvg1, 'xputAvg2': xputAvg2,
-            'ks2dVal': ks2dVal, 'ks2pVal': ks2pVal}
+    # step 3: test if the throughput sum have the same distribution as the single replay xput
+    (xputMaxS, xputMinS, xputAvgS, xputMedS, xputStdS) = compute_xput_stats(single_test_xputs)
+    results_as_dict = {
+        'avgXputDiffPct': results[0], 'KSAcceptRatio': results[1], 'avgXputDiff': results[2],
+        'simReplay1XputStats': {'max': xputMax1, 'min': xputMin1, 'average': xputAvg1, 'median': xputMed1, 'std': xputStd1},
+        'simReplay2XputStats': {'max': xputMax2, 'min': xputMin2, 'average': xputAvg2, 'median': xputMed2, 'std': xputStd2},
+        'singleReplayXputStats': {'max': xputMaxS, 'min': xputMinS, 'average': xputAvgS, 'median': xputMedS, 'std': xputStdS},
+        "KSAvgDVal": results[7], "KSAvgPVal": results[8], "KSDVal": results[9], "KSPVal": results[10]
+    }
+    return results_as_dict
 
 
 class LocalizationAnalysis:
@@ -189,18 +204,31 @@ class LocalizationAnalysis:
 
     def localizer(self, userID, historyCount, testID, secondServerIP):
         resultsFolder = getCurrentResultsFolder()
-        LOG_ACTION(logger, 'localizer:{}, {}, {}'.format(userID, historyCount, testID))
+        LOG_ACTION(logger, 'localizer: {}, {}, {}'.format(userID, historyCount, testID))
+
+        localize_results = []
+        result_file = '{}/{}/localizeDecisions/localizeResults_{}_{}_{}.json'.format(
+            getCurrentResultsFolder(), userID, userID, historyCount, testID)
 
         # localizer will try to test for different differentiation method
         # first per service plan throttling (i.e., ISP handle every plan traffic in dedicated queue)
-        # results1 = detect_per_service_plan_throttling(
-        #     userID, historyCount, testID, secondServerIP, resultsFolder, self.alpha)
+        results1 = detect_per_service_plan_throttling(
+            userID, historyCount, testID, secondServerIP, resultsFolder, self.alpha)
+        localize_results.append({
+            'localizationTestType': 'per_service_plan_throttling', 'statistics': results1
+        })
 
         # second per service aggregate policing (i.e., ISP handle all traffic of same service in same shallow queue)
         results2 = detect_per_service_policing(
             userID, historyCount, testID, secondServerIP, resultsFolder, self.server_port_mappings)
+        localize_results.append({
+            'localizationTestType': 'per_service_policing', 'statistics': results2
+        })
 
-        return {'columns': results2.columns.tolist(), 'data': results2.values.tolist()}
+        with open(result_file, "w") as writeFile:
+            json.dump(localize_results, writeFile)
+
+        return localize_results
 
 
 # locAnalyzer = LocalizationAnalysis()
