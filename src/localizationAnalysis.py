@@ -18,6 +18,8 @@ limitations under the License.
 #######################################################################################################
 #######################################################################################################
 '''
+import json
+
 import gevent, gevent.pool, gevent.queue
 import scipy
 
@@ -186,7 +188,7 @@ class LocalizationAnalysis:
         self.false_positive_rate = 0.05
         self.alpha = 0.95
 
-        self.server_port_mappings = loadReplaysServerPortMapping()
+        self.server_port_mappings = {}
         self.loc_queue = gevent.queue.Queue()
 
     def add_job(self, userID, historyCount, testID, serverIP):
@@ -199,6 +201,8 @@ class LocalizationAnalysis:
             pool.apply_async(self.localizer, args=(userID, historyCount, testID, serverIP))
 
     def run(self):
+        self.server_port_mappings = loadReplaysServerPortMapping()
+
         loc_thread = gevent.Greenlet.spawn(self.loc_queue_processor, self.loc_queue)
         loc_thread.start()
 
@@ -231,53 +235,57 @@ class LocalizationAnalysis:
         return localize_results
 
 
-# locAnalyzer = LocalizationAnalysis()
-#
-#
-# class PostLocalizeRequestHandler(AnalyzerRequestHandler):
-#
-#     @staticmethod
-#     def getCommandStr():
-#         return "localize"
-#
-#     @staticmethod
-#     def handleRequest(args):
-#         try:
-#             userID = args['userID'][0].decode('ascii', 'ignore')
-#             historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
-#             testID = int(args['testID'][0].decode('ascii', 'ignore'))
-#             serverIP = args['serverIP'][0].decode('ascii', 'ignore')
-#         except KeyError as e:
-#             return json.dumps({'success': False, 'missing': str(e)})
-#         except ValueError as e:
-#             return json.dumps({'success:': False, 'value error:': str(e)})
-#
-#         locAnalyzer.add_job(userID, historyCount, testID, serverIP)
-#         LOG_ACTION(logger, 'New localize job added to queue'.format(userID, historyCount, testID, serverIP))
-#
-#         return json.dumps({'success': True})
-#
-#
-# class GETLocalizeResultRequestHandler(AnalyzerRequestHandler):
-#
-#     @staticmethod
-#     def getCommandStr():
-#         return "localizeResult"
-#
-#     @staticmethod
-#     def handleRequest(args):
-#         try:
-#             userID = args['userID'][0].decode('ascii', 'ignore')
-#             historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
-#             testID = int(args['testID'][0].decode('ascii', 'ignore'))
-#         except KeyError as e:
-#             return json.dumps({'success': False, 'missing': str(e)})
-#         except ValueError as e:
-#             return json.dumps({'success:': False, 'value error:': str(e)})
-#
-#         # TODO: add action that reads localize results file and return the results
-#
-#         return json.dumps({'success': True})
+locAnalyzer = LocalizationAnalysis()
+
+
+class PostLocalizeRequestHandler(AnalyzerRequestHandler):
+
+    @staticmethod
+    def getCommandStr():
+        return "localize"
+
+    @staticmethod
+    def handleRequest(args):
+        try:
+            userID = args['userID'][0].decode('ascii', 'ignore')
+            historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
+            testID = int(args['testID'][0].decode('ascii', 'ignore'))
+            serverIP = args['serverIP'][0].decode('ascii', 'ignore')
+        except KeyError as e:
+            return json.dumps({'success': False, 'missing': str(e)})
+        except ValueError as e:
+            return json.dumps({'success:': False, 'value error:': str(e)})
+
+        locAnalyzer.add_job(userID, historyCount, testID, serverIP)
+        LOG_ACTION(logger, 'New localize job added to queue'.format(userID, historyCount, testID, serverIP))
+
+        return json.dumps({'success': True})
+
+
+class GETLocalizeResultRequestHandler(AnalyzerRequestHandler):
+
+    @staticmethod
+    def getCommandStr():
+        return "localizeResult"
+
+    @staticmethod
+    def handleRequest(args):
+        try:
+            userID = args['userID'][0].decode('ascii', 'ignore')
+            historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
+            testID = int(args['testID'][0].decode('ascii', 'ignore'))
+        except KeyError as e:
+            return json.dumps({'success': False, 'missing': str(e)})
+        except ValueError as e:
+            return json.dumps({'success:': False, 'value error:': str(e)})
+
+        result_file = '{}/{}/localizeDecisions/localizeResults_{}_{}_{}.json'.format(
+            getCurrentResultsFolder(), userID, userID, historyCount, testID)
+
+        with open(result_file, "r") as json_file:
+            result = json.load(json_file)
+
+        return json.dumps({'success': True, 'response': result}, cls=myJsonEncoder)
 
 
 if __name__ == "__main__":
@@ -289,12 +297,18 @@ if __name__ == "__main__":
     userID, historyCount, testID = '@49be17rg3', 19, 0
     # print(get_pcap_filename(userID, historyCount, testID, getCurrentResultsFolder()))
     s2_ip = '34.28.122.46'
-    localizer = LocalizationAnalysis()
+    # localizer = LocalizationAnalysis()
+    # localizer.run()
     print('start test2')
-    print(localizer.localizer(userID, historyCount, testID, s2_ip))
+    # print(localizer.localizer(userID, historyCount, testID, s2_ip))
     # x1, x2, x3 = detect_per_service_plan_throttling(userID, historyCount, testID, s2_ip, getCurrentResultsFolder(), 0.05)
     # print(x1[1:10], x2[1:10], x3[1:10])
 
     # df = pd.read_csv('/Users/shmeis/Desktop/df_1.csv')
     # df.set_index('timestamp', inplace=True)
     # print(df[0:1])
+
+    args = {'userID': [userID.encode('ascii', 'ignore')],
+            'historyCount': [str(historyCount).encode('ascii', 'ignore')],
+            'testID': [str(testID).encode('ascii', 'ignore')]}
+    print(GETLocalizeResultRequestHandler.handleRequest(args))

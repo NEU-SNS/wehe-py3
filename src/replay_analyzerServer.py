@@ -618,7 +618,8 @@ def loadAndReturnResult(userID, historyCount, testID):
 class RequestCommandType(Enum):
     FIND_TOPOLOGY = topoFinder.GetServersAnalyzerRequestHandler
     GET_MEASUREMENTS = measurementAnalysis.GetMeasurementsAnalyzerRequestHandler
-    # LOCALIZE = LA.PostLocalizeRequestHandler
+    LOCALIZE = LA.PostLocalizeRequestHandler
+    GET_LOCALIZE_RESULTS = LA.GETLocalizeResultRequestHandler
 
 
 def getHandler(args):
@@ -696,6 +697,10 @@ def postHandler(args):
         command = args['command'][0].decode('ascii', 'ignore')
     except:
         return json.dumps({'success': False, 'error': 'command not provided'})
+
+    for command_type in RequestCommandType:
+        if command == command_type.value.getCommandStr():
+            return command_type.value.handleRequest(args)
 
     try:
         userID = args['userID'][0].decode('ascii', 'ignore')
