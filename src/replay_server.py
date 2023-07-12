@@ -209,9 +209,6 @@ class ClientObj(object):
             decisionsFolder = self.targetFolder + 'decisions/'
             os.makedirs(decisionsFolder)
 
-            localizeDecisionsFolder = self.targetFolder + 'localizeDecisions/'
-            os.makedirs(localizeDecisionsFolder)
-
     def setDump(self, dumpName):
         self.dumpName = dumpName
         if Configs().get('tcpdumpInt') == "default":

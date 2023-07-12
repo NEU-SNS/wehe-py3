@@ -21,10 +21,9 @@ limitations under the License.
 import json
 
 import gevent, gevent.pool, gevent.queue
+
 import scipy
-
 from multiprocessing.pool import ThreadPool
-
 
 from python_lib import *
 from measurementAnalysis import *
@@ -43,12 +42,12 @@ def cast_GETResult_object(value, type):
     return value
 
 
-def send_GETMeasurement_request(serverIP, args):
+def send_GETMeasurement_request(serverIP, params):
     analyzer_port = Configs().get('analyzer_tls_port')
     url = 'https://{}:{}/Results'.format(serverIP, analyzer_port)
-    cert_file = '{}/ca.crt'.format(Configs().get('certs_folder'))
+    cert_file = os.path.join(Configs().get('certs_folder'), 'ca.crt')
 
-    response = requests.get(url=url, params=args, verify=cert_file).json()
+    response = requests.get(url=url, params=params, verify=cert_file).json()
 
     if response['success']:
         measurements = response['measurements']
@@ -81,7 +80,7 @@ def compute_perf_correlation(pair_perf, interval_size):
     return {'intervalSize': interval_size, 'corrVal': statistic, 'corrPVal': pvalue}
 
 
-def detect_per_service_policing(userID, historyCount, testID, secondServerIP, resultsFolder, server_port_mappings):
+def detect_correlated_loss(userID, historyCount, testID, secondServerIP, resultsFolder, server_port_mappings):
     pcap_path = get_pcap_filename(userID, historyCount, testID, resultsFolder)
     replayInfo = load_replayInfo(userID, historyCount, testID, resultsFolder)
 
@@ -95,14 +94,14 @@ def detect_per_service_policing(userID, historyCount, testID, secondServerIP, re
     # initial RTT
     command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
                     'measurementType': 'initialRTT', 'kwargs': json.dumps({'serverPort': server_port})}
-    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'args': command_args}}
+    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'params': command_args}}
     local_f = {'cls': get_iRTT_from_pcap, 'kwargs': {'pcap_file': pcap_path, 'server_port': server_port}}
     iRTTs = execute_methods_in_parallel([local_f, remote_f])
 
     # loss events
     command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
                     'measurementType': 'lossEvents', 'kwargs': json.dumps({'serverPort': server_port})}
-    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'args': command_args}}
+    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'params': command_args}}
     local_f = {'cls': get_lossEvents_from_pcap, 'kwargs': {'pcap_file': pcap_path, 'server_port': server_port}}
     loss_dfs = execute_methods_in_parallel([local_f, remote_f])
 
@@ -133,18 +132,18 @@ def detect_per_service_policing(userID, historyCount, testID, secondServerIP, re
     corr_results = execute_methods_in_parallel(corr_funcs)
 
     results_as_dict = {
-        'simReplay1AvgLoss': loss_perfs[0].compute_total_perf(),
-        'simReplay2AvgLoss': loss_perfs[1].compute_total_perf(),
+        'pairReplay1AvgLoss': loss_perfs[0].compute_total_perf(),
+        'pairReplay2AvgLoss': loss_perfs[1].compute_total_perf(),
         'spearmanCorrStats': corr_results
     }
     return results_as_dict
 
 
-def detect_per_service_plan_throttling(userID, historyCount, testID, secondServerIP, resultsFolder, alpha):
+def compare_pair_vs_single_replay_xput(userID, historyCount, testID, secondServerIP, resultsFolder, alpha):
     # step 1: measurement collection: client side xputs
     command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
                     'measurementType': 'clientXputs', 'kwargs': json.dumps({})}
-    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'args': command_args}}
+    remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'params': command_args}}
     local_f = {'cls': load_client_xputs,
                'kwargs': {'userID': userID, 'historyCount': historyCount, 'testID': testID, 'resultsFolder': resultsFolder}}
     xputs = execute_methods_in_parallel([local_f, remote_f])
@@ -180,62 +179,44 @@ def detect_per_service_plan_throttling(userID, historyCount, testID, secondServe
     return results_as_dict
 
 
-class LocalizationAnalysis:
+def localize(userID, historyCount, testID, secondServerIP, resultsFolder, params):
+    LOG_ACTION(logger, 'Run localization test: {}, {}, {}'.format(userID, historyCount, testID))
 
-    def __init__(self):
-        # TODO: add the configuration
-        self.min_nb_intervals = 30
-        self.false_positive_rate = 0.05
-        self.alpha = 0.95
+    localize_results = []
+    loc_decisions_dir = os.path.join(resultsFolder, userID, 'localizeDecisions')
+    os.makedirs(loc_decisions_dir, exist_ok=True)
+    result_file = '{}/localizeResults_{}_{}_{}.json'.format(loc_decisions_dir, userID, historyCount, testID)
 
-        self.server_port_mappings = {}
-        self.loc_queue = gevent.queue.Queue()
+    # localize will try to test for different differentiation method
+    # first per service plan throttling (i.e., ISP handle every plan traffic in dedicated queue)
+    results1 = compare_pair_vs_single_replay_xput(
+        userID, historyCount, testID, secondServerIP, resultsFolder, params['alpha'])
+    localize_results.append({'localizationTestType': 'xput_pair_sum_vs_single_replay', 'statistics': results1})
 
-    def add_job(self, userID, historyCount, testID, serverIP):
-        self.loc_queue.put((userID, historyCount, testID, serverIP))
+    # second per service aggregate policing (i.e., ISP handle all traffic of same service in same shallow queue)
+    results2 = detect_correlated_loss(
+        userID, historyCount, testID, secondServerIP, resultsFolder, params['server_port_mappings'])
+    localize_results.append({'localizationTestType': 'loss_correlation', 'statistics': results2})
 
-    def loc_queue_processor(self, q):
-        pool = gevent.pool.Pool()
-        while True:
-            userID, historyCount, testID, serverIP = q.get()
-            pool.apply_async(self.localizer, args=(userID, historyCount, testID, serverIP))
+    with open(result_file, "w") as writeFile:
+        json.dump(localize_results, writeFile)
 
-    def run(self):
-        self.server_port_mappings = loadReplaysServerPortMapping()
-
-        loc_thread = gevent.Greenlet.spawn(self.loc_queue_processor, self.loc_queue)
-        loc_thread.start()
-
-    def localizer(self, userID, historyCount, testID, secondServerIP):
-        resultsFolder = getCurrentResultsFolder()
-        LOG_ACTION(logger, 'localizer: {}, {}, {}'.format(userID, historyCount, testID))
-
-        localize_results = []
-        result_file = '{}/{}/localizeDecisions/localizeResults_{}_{}_{}.json'.format(
-            getCurrentResultsFolder(), userID, userID, historyCount, testID)
-
-        # localizer will try to test for different differentiation method
-        # first per service plan throttling (i.e., ISP handle every plan traffic in dedicated queue)
-        results1 = detect_per_service_plan_throttling(
-            userID, historyCount, testID, secondServerIP, resultsFolder, self.alpha)
-        localize_results.append({
-            'localizationTestType': 'per_service_plan_throttling', 'statistics': results1
-        })
-
-        # second per service aggregate policing (i.e., ISP handle all traffic of same service in same shallow queue)
-        results2 = detect_per_service_policing(
-            userID, historyCount, testID, secondServerIP, resultsFolder, self.server_port_mappings)
-        localize_results.append({
-            'localizationTestType': 'per_service_policing', 'statistics': results2
-        })
-
-        with open(result_file, "w") as writeFile:
-            json.dump(localize_results, writeFile)
-
-        return localize_results
+    return localize_results
 
 
-locAnalyzer = LocalizationAnalysis()
+LOC_Queue = gevent.queue.Queue()
+
+
+def runLocalizationTestsProcessor():
+    LOG_ACTION(logger, 'Ready to processes localization tests request')
+    params = {'server_port_mappings': loadReplaysServerPortMapping(),
+              'min_nb_intervals': 30, 'FP_rate': 0.05, 'alpha': 0.95}
+
+    pool = gevent.pool.Pool()
+    while True:
+        userID, historyCount, testID, secondServerIP = LOC_Queue.get()
+        results_folder = getCurrentResultsFolder()
+        pool.apply_async(localize, args=(userID, historyCount, testID, secondServerIP, results_folder, params))
 
 
 class PostLocalizeRequestHandler(AnalyzerRequestHandler):
@@ -250,14 +231,14 @@ class PostLocalizeRequestHandler(AnalyzerRequestHandler):
             userID = args['userID'][0].decode('ascii', 'ignore')
             historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
             testID = int(args['testID'][0].decode('ascii', 'ignore'))
-            serverIP = args['serverIP'][0].decode('ascii', 'ignore')
+            secondServerIP = args['secondServerIP'][0].decode('ascii', 'ignore')
         except KeyError as e:
             return json.dumps({'success': False, 'missing': str(e)})
         except ValueError as e:
             return json.dumps({'success:': False, 'value error:': str(e)})
 
-        locAnalyzer.add_job(userID, historyCount, testID, serverIP)
-        LOG_ACTION(logger, 'New localize job added to queue'.format(userID, historyCount, testID, serverIP))
+        LOC_Queue.put((userID, historyCount, testID, secondServerIP))
+        LOG_ACTION(logger, 'New localize job added to queue'.format(userID, historyCount, testID, secondServerIP))
 
         return json.dumps({'success': True})
 
@@ -288,27 +269,48 @@ class GETLocalizeResultRequestHandler(AnalyzerRequestHandler):
         return json.dumps({'success': True, 'response': result}, cls=myJsonEncoder)
 
 
+gevent.monkey.patch_all(ssl=False)
 if __name__ == "__main__":
-    Configs().set('certs_folder', './ssl/')
+    print('start')
+
+    Configs().set('certs_folder', '/Users/shmeis/Desktop/PHD/Research/code/wehe-py3/src/ssl/')
     Configs().set('analyzer_tls_port', 56566)
     Configs().set('replay_parent_folder', '/Users/shmeis/Desktop/PHD/Research/code/wehe-py3/replayTraces/')
     Configs().set('resultsFolder', '/Users/shmeis/Desktop/PHD/Research/code/wehe-py3/var/spool/wehe/replay/')
 
     userID, historyCount, testID = '@49be17rg3', 19, 0
-    # print(get_pcap_filename(userID, historyCount, testID, getCurrentResultsFolder()))
     s2_ip = '34.28.122.46'
-    # localizer = LocalizationAnalysis()
-    # localizer.run()
-    print('start test2')
-    # print(localizer.localizer(userID, historyCount, testID, s2_ip))
-    # x1, x2, x3 = detect_per_service_plan_throttling(userID, historyCount, testID, s2_ip, getCurrentResultsFolder(), 0.05)
-    # print(x1[1:10], x2[1:10], x3[1:10])
 
-    # df = pd.read_csv('/Users/shmeis/Desktop/df_1.csv')
-    # df.set_index('timestamp', inplace=True)
-    # print(df[0:1])
+    gevent.Greenlet.spawn(runLocalizationTestsProcessor)
 
-    args = {'userID': [userID.encode('ascii', 'ignore')],
-            'historyCount': [str(historyCount).encode('ascii', 'ignore')],
-            'testID': [str(testID).encode('ascii', 'ignore')]}
-    print(GETLocalizeResultRequestHandler.handleRequest(args))
+    LOC_Queue.put((userID, historyCount, testID, s2_ip))
+    time.sleep(30)
+    # print(locAnalyzer.localizer(userID, historyCount, testID, s2_ip))
+
+    # command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
+    #                 'measurementType': 'initialRTT', 'kwargs': json.dumps({'serverPort': 443})}
+    # print(send_GETMeasurement_request(s2_ip, command_args))
+
+    # serverIP, params = s2_ip, command_args
+    #
+    # analyzer_port = Configs().get('analyzer_tls_port')
+    # url = 'https://{}:{}/Results'.format(serverIP, analyzer_port)
+    # certs_folder = Configs().get('certs_folder')
+    # cert_location = os.path.join(certs_folder, 'ca.crt')
+    # key_location = os.path.join(certs_folder, 'ca.key')
+    # response = requests.get(url=url, params=params, verify=cert_location)
+    # print(response.text)
+
+
+    # time.sleep(5)
+    # args = {'userID': [userID.encode('ascii', 'ignore')],
+    #         'historyCount': [str(historyCount).encode('ascii', 'ignore')],
+    #         'testID': [str(testID).encode('ascii', 'ignore')],
+    #         'secondServerIP': [s2_ip.encode('ascii', 'ignore')]}
+    # print(PostLocalizeRequestHandler.handleRequest(args))
+    #
+    # time.sleep(30)
+    # args = {'userID': [userID.encode('ascii', 'ignore')],
+    #         'historyCount': [str(historyCount).encode('ascii', 'ignore')],
+    #         'testID': [str(testID).encode('ascii', 'ignore')]}
+    # print(GETLocalizeResultRequestHandler.handleRequest(args))

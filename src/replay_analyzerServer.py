@@ -904,7 +904,7 @@ def main():
 
     # Run the processes responsible for the localization test
     gevent.Greenlet.spawn(topoFinder.runScheduledYTopologiesDownload)
-    gevent.Greenlet.spawn(LA.LocalizationAnalysis().run)
+    gevent.Greenlet.spawn(LA.runLocalizationTestsProcessor)
 
     # Run the processes responsible for the original Wehe xput tests
     gevent.Greenlet.spawn(error_logger, Configs().get('errorsLog'))
