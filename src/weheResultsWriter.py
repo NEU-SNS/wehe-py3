@@ -36,26 +36,25 @@ def convert_data_to_dict(schema, data):
                 else:
                     data_key_value[k.name] = convert_data_to_dict(k.fields, casted_value)
             except:
-                data_key_value[k.name] = None
+                data_key_value[k.name] = convert_data_to_dict(k.fields, [None] * len(k.fields))
         elif k.name not in data_key_value.keys():
             data_key_value[k.name] = None
     return data_key_value
 
 
 def check_schema_field_type(value, field_type, mode):
-    if mode == 'REPEATED':
-        try: return [check_schema_field_type(v, field_type, '') for v in value]
-        except: return None
-    if field_type == 'INTEGER':
-        try: return int(value)
-        except ValueError: return None
-    if field_type == 'FLOAT':
-        try: return float(value)
-        except ValueError: return None
-    if field_type == 'BOOLEAN':
-        try: return bool(value)
-        except ValueError: return None
-    return value
+    try:
+        if mode == 'REPEATED':
+            return [check_schema_field_type(v, field_type, '') for v in value]
+        if field_type == 'INTEGER':
+            return int(value)
+        if field_type == 'FLOAT':
+            return float(value)
+        if field_type == 'BOOLEAN':
+            return bool(value)
+        return value
+    except:
+        return None
 
 
 def check_schema(key_val_data, schema):
