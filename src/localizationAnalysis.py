@@ -66,6 +66,7 @@ def compute_xput_stats(xputs):
     return max(xputs), min(xputs), np.average(xputs), np.median(xputs), np.std(xputs)
 
 
+# TODO: re-visit the range of interval size to look at [30RTT - 50RTT]
 def get_interval_sizes(min_rtt, duration, mult_start=30, mult_end=50, min_nb_intervals=30):
     interval_sizes = []
     for i in np.arange(mult_start, mult_end + 1, 1):
@@ -139,7 +140,7 @@ def detect_correlated_loss(userID, historyCount, testID, secondServerIP, results
     return results_as_dict
 
 
-def compare_pair_vs_single_replay_xput(userID, historyCount, testID, secondServerIP, resultsFolder, alpha):
+def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondServerIP, resultsFolder, alpha):
     # step 1: measurement collection: client side xputs
     command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
                     'measurementType': 'clientXputs', 'kwargs': json.dumps({})}
@@ -155,25 +156,24 @@ def compare_pair_vs_single_replay_xput(userID, historyCount, testID, secondServe
 
     # step 2: sum the simultaneous replay throughput
     xputs_s1, dur_s1 = xputs[0]
-    (xputMax1, xputMin1, xputAvg1, xputMed1, xputStd1) = compute_xput_stats(xputs_s1)
-
     xputs_s2, dur_s2 = xputs[1]
-    (xputMax2, xputMin2, xputAvg2, xputMed2, xputStd2) = compute_xput_stats(xputs_s2)
-
-    sim_xputs_sum = [sum(x) for x in zip(xputs_s1, xputs_s2)]
+    pair_xput_sum = [sum(x) for x in zip(xputs_s1, xputs_s2)]
 
     # step 3: get single replay xput
     # TODO: implement retrieve client xputs for the single replay test
-    single_test_xputs = sim_xputs_sum
-    results = TH.doTests(sim_xputs_sum, single_test_xputs, alpha)
+    single_test_xputs = pair_xput_sum
+
+    # TODO: revisit the statistical test to check if two samples come from same distribution (KS does not apply here)
+    results = TH.doTests(pair_xput_sum, single_test_xputs, alpha)
 
     # step 3: test if the throughput sum have the same distribution as the single replay xput
-    (xputMaxS, xputMinS, xputAvgS, xputMedS, xputStdS) = compute_xput_stats(single_test_xputs)
+    xput_stats_keys = ['max', 'min', 'average', 'median', 'std']
     results_as_dict = {
         'avgXputDiffPct': results[0], 'KSAcceptRatio': results[1], 'avgXputDiff': results[2],
-        'simReplay1XputStats': {'max': xputMax1, 'min': xputMin1, 'average': xputAvg1, 'median': xputMed1, 'std': xputStd1},
-        'simReplay2XputStats': {'max': xputMax2, 'min': xputMin2, 'average': xputAvg2, 'median': xputMed2, 'std': xputStd2},
-        'singleReplayXputStats': {'max': xputMaxS, 'min': xputMinS, 'average': xputAvgS, 'median': xputMedS, 'std': xputStdS},
+        'pairReplay1XputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(xputs_s1))},
+        'pairReplay2XputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(xputs_s2))},
+        'pairReplaySumXputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(pair_xput_sum))},
+        'singleReplayXputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(single_test_xputs))},
         "KSAvgDVal": results[7], "KSAvgPVal": results[8], "KSDVal": results[9], "KSPVal": results[10]
     }
     return results_as_dict
@@ -189,9 +189,9 @@ def localize(userID, historyCount, testID, secondServerIP, resultsFolder, params
 
     # localize will try to test for different differentiation method
     # first per service plan throttling (i.e., ISP handle every plan traffic in dedicated queue)
-    results1 = compare_pair_vs_single_replay_xput(
+    results1 = compare_pairsum_vs_single_replay_xput(
         userID, historyCount, testID, secondServerIP, resultsFolder, params['alpha'])
-    localize_results.append({'localizationTestType': 'xput_pair_sum_vs_single_replay', 'statistics': results1})
+    localize_results.append({'localizationTestType': 'pairsum_vs_single_xput', 'statistics': results1})
 
     # second per service aggregate policing (i.e., ISP handle all traffic of same service in same shallow queue)
     results2 = detect_correlated_loss(
@@ -209,8 +209,7 @@ LOC_Queue = gevent.queue.Queue()
 
 def runLocalizationTestsProcessor():
     LOG_ACTION(logger, 'Ready to processes localization tests request')
-    params = {'server_port_mappings': loadReplaysServerPortMapping(),
-              'min_nb_intervals': 30, 'FP_rate': 0.05, 'alpha': 0.95}
+    params = {'server_port_mappings': loadReplaysServerPortMapping(), 'min_nb_intervals': 30, 'alpha': 0.95}
 
     pool = gevent.pool.Pool()
     while True:
@@ -260,57 +259,42 @@ class GETLocalizeResultRequestHandler(AnalyzerRequestHandler):
         except ValueError as e:
             return json.dumps({'success:': False, 'value error:': str(e)})
 
+        result_folder = getCurrentResultsFolder()
         result_file = '{}/{}/localizeDecisions/localizeResults_{}_{}_{}.json'.format(
-            getCurrentResultsFolder(), userID, userID, historyCount, testID)
+            result_folder, userID, userID, historyCount, testID)
 
+        # check if results are ready
+        if not os.path.isfile(result_file):
+            LOG_ACTION(logger, 'result not ready yet, adding localize job to queue :{}, {}, {}'.format(
+                userID, historyCount, testID
+            ))
+            return json.dumps({'success': False, 'error': 'No result found'})
+
+        replayInfo = load_replayInfo(userID, historyCount, testID, result_folder)
         with open(result_file, "r") as json_file:
-            result = json.load(json_file)
+            results = json.load(json_file)
 
-        return json.dumps({'success': True, 'response': result}, cls=myJsonEncoder)
+        locTests = {t['localizationTestType']: t['statistics'] for t in results if t['statistics']}
+        response = {
+            'userID': userID, 'historyCount': str(historyCount), 'testID': str(testID),
+            'timestamp': replayInfo[0], 'replayName': replayInfo[4], 'localization_tests': list(locTests.keys())
+        }
 
+        if 'pairsum_vs_single_xput' in locTests.keys():
+            stats = locTests['pairsum_vs_single_xput']
+            response['pairsum_vs_single_xput'] = {
+                'area_test': stats['avgXputDiffPct'], 'ks2_ratio_test': stats['KSAcceptRatio'],
+                'xput_avg_pairsum': stats['pairReplaySumXputStats']['average'],
+                'xput_avg_single': stats['singleReplayXputStats']['average'],
+                'ks2dVal': stats['KSDVal'], 'ks2pVal': stats['KSPVal']
+            }
 
-gevent.monkey.patch_all(ssl=False)
-if __name__ == "__main__":
-    print('start')
+        if 'loss_correlation' in locTests.keys():
+            stats = locTests['loss_correlation']
+            response['loss_correlation'] = {
+                'interval_sizes': [s['intervalSize'] for s in stats['spearmanCorrStats']],
+                'corr_pvalues': [s['corrPVal'] for s in stats['spearmanCorrStats']],
+                'pair_replay1_avg_loss': stats['pairReplay1AvgLoss'], 'pair_replay2_avg_loss': stats['pairReplay2AvgLoss']
+            }
+        return json.dumps({'success': True, 'response': response}, cls=myJsonEncoder)
 
-    Configs().set('certs_folder', '/Users/shmeis/Desktop/PHD/Research/code/wehe-py3/src/ssl/')
-    Configs().set('analyzer_tls_port', 56566)
-    Configs().set('replay_parent_folder', '/Users/shmeis/Desktop/PHD/Research/code/wehe-py3/replayTraces/')
-    Configs().set('resultsFolder', '/Users/shmeis/Desktop/PHD/Research/code/wehe-py3/var/spool/wehe/replay/')
-
-    userID, historyCount, testID = '@49be17rg3', 19, 0
-    s2_ip = '34.28.122.46'
-
-    gevent.Greenlet.spawn(runLocalizationTestsProcessor)
-
-    LOC_Queue.put((userID, historyCount, testID, s2_ip))
-    time.sleep(30)
-    # print(locAnalyzer.localizer(userID, historyCount, testID, s2_ip))
-
-    # command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
-    #                 'measurementType': 'initialRTT', 'kwargs': json.dumps({'serverPort': 443})}
-    # print(send_GETMeasurement_request(s2_ip, command_args))
-
-    # serverIP, params = s2_ip, command_args
-    #
-    # analyzer_port = Configs().get('analyzer_tls_port')
-    # url = 'https://{}:{}/Results'.format(serverIP, analyzer_port)
-    # certs_folder = Configs().get('certs_folder')
-    # cert_location = os.path.join(certs_folder, 'ca.crt')
-    # key_location = os.path.join(certs_folder, 'ca.key')
-    # response = requests.get(url=url, params=params, verify=cert_location)
-    # print(response.text)
-
-
-    # time.sleep(5)
-    # args = {'userID': [userID.encode('ascii', 'ignore')],
-    #         'historyCount': [str(historyCount).encode('ascii', 'ignore')],
-    #         'testID': [str(testID).encode('ascii', 'ignore')],
-    #         'secondServerIP': [s2_ip.encode('ascii', 'ignore')]}
-    # print(PostLocalizeRequestHandler.handleRequest(args))
-    #
-    # time.sleep(30)
-    # args = {'userID': [userID.encode('ascii', 'ignore')],
-    #         'historyCount': [str(historyCount).encode('ascii', 'ignore')],
-    #         'testID': [str(testID).encode('ascii', 'ignore')]}
-    # print(GETLocalizeResultRequestHandler.handleRequest(args))
