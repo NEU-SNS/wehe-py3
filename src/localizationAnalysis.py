@@ -140,14 +140,37 @@ def detect_correlated_loss(userID, historyCount, testID, secondServerIP, results
     return results_as_dict
 
 
-def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondServerIP, resultsFolder, alpha):
+def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondServerIP, kwargs, resultsFolder, alpha):
+    # parse single replay info
+    try:
+        single_replay_userID = kwargs['singleReplay_userID']
+        single_replay_historyCount = kwargs['singleReplay_historyCount']
+        single_replay_serverIP = kwargs['singleReplay_server']
+    except:
+        elogger.error('FAILED localization test for {} {}: parsing single replay info'.format(userID, historyCount))
+        return None
+
     # step 1: measurement collection: client side xputs
+    # collect pair-replay xputs
     command_args = {'command': 'getMeasurements', 'userID': userID, 'historyCount': historyCount, 'testID': testID,
                     'measurementType': 'clientXputs', 'kwargs': json.dumps({})}
     remote_f = {'cls': send_GETMeasurement_request, 'kwargs': {'serverIP': secondServerIP, 'params': command_args}}
     local_f = {'cls': load_client_xputs,
                'kwargs': {'userID': userID, 'historyCount': historyCount, 'testID': testID, 'resultsFolder': resultsFolder}}
-    xputs = execute_methods_in_parallel([local_f, remote_f])
+    xput_method_calls = [local_f, remote_f]
+
+    # check if single replay xput are locally available; if not, perform remote call
+    single_test_xputs = None
+    try:
+        single_test_xputs, _ = load_client_xputs(single_replay_userID, single_replay_historyCount, testID, resultsFolder)
+    except:
+        s_command_args = {'command': 'getMeasurements', 'userID': single_replay_userID,
+                          'historyCount': single_replay_historyCount, 'testID': testID,
+                          'measurementType': 'clientXputs', 'kwargs': json.dumps({})}
+        xput_method_calls.append({'cls': send_GETMeasurement_request,
+                                  'kwargs': {'serverIP': single_replay_serverIP, 'params': s_command_args}})
+
+    xputs = execute_methods_in_parallel(xput_method_calls)
 
     # check all remote calls are successful so far
     if None in xputs:
@@ -159,14 +182,13 @@ def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondSe
     xputs_s2, dur_s2 = xputs[1]
     pair_xput_sum = [sum(x) for x in zip(xputs_s1, xputs_s2)]
 
-    # step 3: get single replay xput
-    # TODO: implement retrieve client xputs for the single replay test
-    single_test_xputs = pair_xput_sum
+    if single_test_xputs is None:
+        single_test_xputs, _ = xputs[2]
 
+    # step 3: test if the throughput sum distribution have the same mean as the single replay xput distribution
     # TODO: revisit the statistical test to check if two samples come from same distribution (KS does not apply here)
     results = TH.doTests(pair_xput_sum, single_test_xputs, alpha)
 
-    # step 3: test if the throughput sum have the same distribution as the single replay xput
     xput_stats_keys = ['max', 'min', 'average', 'median', 'std']
     results_as_dict = {
         'avgXputDiffPct': results[0], 'KSAcceptRatio': results[1], 'avgXputDiff': results[2],
@@ -179,7 +201,7 @@ def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondSe
     return results_as_dict
 
 
-def localize(userID, historyCount, testID, secondServerIP, resultsFolder, params):
+def localize(userID, historyCount, testID, secondServerIP, kwargs, resultsFolder, params):
     LOG_ACTION(logger, 'Run localization test: {}, {}, {}'.format(userID, historyCount, testID))
 
     localize_results = []
@@ -190,7 +212,7 @@ def localize(userID, historyCount, testID, secondServerIP, resultsFolder, params
     # localize will try to test for different differentiation method
     # first per service plan throttling (i.e., ISP handle every plan traffic in dedicated queue)
     results1 = compare_pairsum_vs_single_replay_xput(
-        userID, historyCount, testID, secondServerIP, resultsFolder, params['alpha'])
+        userID, historyCount, testID, secondServerIP, kwargs, resultsFolder, params['alpha'])
     localize_results.append({'localizationTestType': 'pairsum_vs_single_xput', 'statistics': results1})
 
     # second per service aggregate policing (i.e., ISP handle all traffic of same service in same shallow queue)
@@ -213,9 +235,9 @@ def runLocalizationTestsProcessor():
 
     pool = gevent.pool.Pool()
     while True:
-        userID, historyCount, testID, secondServerIP = LOC_Queue.get()
+        userID, historyCount, testID, secondServerIP, kwargs = LOC_Queue.get()
         results_folder = getCurrentResultsFolder()
-        pool.apply_async(localize, args=(userID, historyCount, testID, secondServerIP, results_folder, params))
+        pool.apply_async(localize, args=(userID, historyCount, testID, secondServerIP, kwargs, results_folder, params))
 
 
 class PostLocalizeRequestHandler(AnalyzerRequestHandler):
@@ -231,12 +253,13 @@ class PostLocalizeRequestHandler(AnalyzerRequestHandler):
             historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
             testID = int(args['testID'][0].decode('ascii', 'ignore'))
             secondServerIP = args['secondServerIP'][0].decode('ascii', 'ignore')
+            kwargs = json.loads(args['kwargs'][0].decode('ascii', 'ignore'))
         except KeyError as e:
             return json.dumps({'success': False, 'missing': str(e)})
         except ValueError as e:
             return json.dumps({'success:': False, 'value error:': str(e)})
 
-        LOC_Queue.put((userID, historyCount, testID, secondServerIP))
+        LOC_Queue.put((userID, historyCount, testID, secondServerIP, kwargs))
         LOG_ACTION(logger, 'New localize job added to queue'.format(userID, historyCount, testID, secondServerIP))
 
         return json.dumps({'success': True})
@@ -297,4 +320,3 @@ class GETLocalizeResultRequestHandler(AnalyzerRequestHandler):
                 'pair_replay1_avg_loss': stats['pairReplay1AvgLoss'], 'pair_replay2_avg_loss': stats['pairReplay2AvgLoss']
             }
         return json.dumps({'success': True, 'response': response}, cls=myJsonEncoder)
-
