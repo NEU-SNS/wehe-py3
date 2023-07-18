@@ -62,7 +62,10 @@ def check_schema(key_val_data, schema):
         if k.fields:
             check_schema(key_val_data[k.name], k.fields)
         else:
-            key_val_data[k.name] = check_schema_field_type(key_val_data[k.name], k.field_type, k.mode)
+            try:
+                key_val_data[k.name] = check_schema_field_type(key_val_data[k.name], k.field_type, k.mode)
+            except:
+                key_val_data[k.name] = None
 
 
 # Wehe results have four datatypes:
