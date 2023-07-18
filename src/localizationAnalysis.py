@@ -24,12 +24,10 @@ import gevent, gevent.pool, gevent.queue
 
 import scipy
 from multiprocessing.pool import ThreadPool
+from scipy.stats import ttest_ind
 
 from python_lib import *
 from measurementAnalysis import *
-
-sys.path.append('testHypothesis')
-import testHypothesis as TH
 
 elogger = logging.getLogger('errorLogger')
 loc_logger = logging.getLogger('localization_analysis')
@@ -67,7 +65,7 @@ def compute_xput_stats(xputs):
 
 
 # TODO: re-visit the range of interval size to look at [30RTT - 50RTT]
-def get_interval_sizes(min_rtt, duration, mult_start=30, mult_end=50, min_nb_intervals=30):
+def get_interval_sizes(min_rtt, duration, mult_start=10, mult_end=50, min_nb_intervals=30):
     interval_sizes = []
     for i in np.arange(mult_start, mult_end + 1, 1):
         if (duration / (min_rtt * i)) >= min_nb_intervals:
@@ -140,7 +138,7 @@ def detect_correlated_loss(userID, historyCount, testID, secondServerIP, results
     return results_as_dict
 
 
-def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondServerIP, kwargs, resultsFolder, alpha):
+def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondServerIP, kwargs, resultsFolder):
     # parse single replay info
     try:
         single_replay_userID = kwargs['singleReplay_userID']
@@ -180,23 +178,35 @@ def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondSe
     # step 2: sum the simultaneous replay throughput
     xputs_s1, dur_s1 = xputs[0]
     xputs_s2, dur_s2 = xputs[1]
-    pair_xput_sum = [sum(x) for x in zip(xputs_s1, xputs_s2)]
+    pair_xput_sum = [sum(x) for x in zip(xputs_s1, xputs_s2) if sum(x) > 0]
 
     if single_test_xputs is None:
-        single_test_xputs, _ = xputs[2]
+        single_test_xputs, _ = [x for x in xputs[2] if x > 0]
 
     # step 3: test if the throughput sum distribution have the same mean as the single replay xput distribution
-    # TODO: revisit the statistical test to check if two samples come from same distribution (KS does not apply here)
-    results = TH.doTests(pair_xput_sum, single_test_xputs, alpha)
+    # 1- perform a Two Sample T-Test Unequal Variance
+    # 2- compute the average xput difference in pct
+    t_stats_val, p_val = ttest_ind(pair_xput_sum, single_test_xputs, equal_var=False)
+    pair_avg_xput, single_avg_xput = np.average(pair_xput_sum), np.average(single_test_xputs)
+    xput_diff_pct = (pair_avg_xput - single_avg_xput) / max(pair_avg_xput, single_avg_xput)
+
+    diffs = []
+    R, N, sub = 500, min(pair_avg_xput.shape[0], single_avg_xput.shape[0]), 0.5
+    for i in np.arange(R):
+        sub_avg_X1 = np.random.choice(pair_xput_sum, size=int(N * sub)).mean()
+        sub_avg_X2 = np.random.choice(single_test_xputs, size=int(N * sub)).mean()
+        diffs.append((sub_avg_X1 - sub_avg_X2) / max(sub_avg_X1, sub_avg_X2))
 
     xput_stats_keys = ['max', 'min', 'average', 'median', 'std']
     results_as_dict = {
-        'avgXputDiffPct': results[0], 'KSAcceptRatio': results[1], 'avgXputDiff': results[2],
+        'TStatisticsTVal': t_stats_val, 'TStatisticsPVal': p_val,
+        'avgXputDiffPct': xput_diff_pct, 'sampleAvgXputDiffPct90th': np.percentile(diffs, [90]),
+        'sampleAvgXputDiffPct95th': np.percentile(diffs, [95]), 'sampleAvgXputDiffPct99th': np.percentile(diffs, [99]),
         'pairReplay1XputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(xputs_s1))},
         'pairReplay2XputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(xputs_s2))},
         'pairReplaySumXputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(pair_xput_sum))},
         'singleReplayXputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(single_test_xputs))},
-        "KSAvgDVal": results[7], "KSAvgPVal": results[8], "KSDVal": results[9], "KSPVal": results[10]
+        'singleReplayUserID': single_replay_userID, 'singleReplayHistoryCount': single_replay_historyCount,
     }
     return results_as_dict
 
@@ -212,7 +222,7 @@ def localize(userID, historyCount, testID, secondServerIP, kwargs, resultsFolder
     # localize will try to test for different differentiation method
     # first per service plan throttling (i.e., ISP handle every plan traffic in dedicated queue)
     results1 = compare_pairsum_vs_single_replay_xput(
-        userID, historyCount, testID, secondServerIP, kwargs, resultsFolder, params['alpha'])
+        userID, historyCount, testID, secondServerIP, kwargs, resultsFolder)
     localize_results.append({'localizationTestType': 'pairsum_vs_single_xput', 'statistics': results1})
 
     # second per service aggregate policing (i.e., ISP handle all traffic of same service in same shallow queue)
@@ -231,7 +241,7 @@ LOC_Queue = gevent.queue.Queue()
 
 def runLocalizationTestsProcessor():
     LOG_ACTION(logger, 'Ready to processes localization tests request')
-    params = {'server_port_mappings': loadReplaysServerPortMapping(), 'min_nb_intervals': 30, 'alpha': 0.95}
+    params = {'server_port_mappings': loadReplaysServerPortMapping(), 'min_nb_intervals': 30}
 
     pool = gevent.pool.Pool()
     while True:

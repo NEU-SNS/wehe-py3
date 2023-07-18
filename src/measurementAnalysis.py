@@ -34,7 +34,7 @@ def create_intervals_list(start, end, step):
     return [np.around([value, value + step], 3) for value in np.arange(start, end, step)]
 
 
-def pcap_to_df(pcap_path, fields,pkt_filter=None):
+def pcap_to_df(pcap_path, fields, pkt_filter=None):
     command = ['tshark', '-r', pcap_path, '-T', 'fields', '-E', 'header=y', '-E', 'separator=,', '-E', 'quote=d']
     for f in fields: command += ['-e', f]
     if pkt_filter: command += ['-Y', pkt_filter]
@@ -226,35 +226,6 @@ class GetMeasurementsAnalyzerRequestHandler(AnalyzerRequestHandler):
 
         return json.dumps({'success': True, 'measurements': measurements}, cls=myJsonEncoder)
 
-
-# if __name__ == "__main__":
-    # pcap_file = '/Users/shmeis/Desktop/PHD/Research/throttling-classification/data/wehe_records_dir/td_cases' \
-    #             '/case_0sbQ0Imp63_17/dump_server_0sbQ0Imp63_DisneyPlusRandom-05082020_DiffDetector_17_1_out.pcap'
-
-    # df = get_lossEvents_from_pcap(pcap_file, 443)
-    # df2json = {'columns': df.columns.tolist(), 'data': df.values.tolist()}
-    # print(df2json)
-    # json2df = pd.DataFrame(df2json['data'], columns=df2json['columns'])
-    # print(json2df)
-    # print(str(type(json2df)), str(type(json2df)) == str(pd.DataFrame))
-    # print(get_lossRatios_from_pcap(pcap_file, 443, 0.5))
-    # print(get_iRTT_from_pcap(pcap_file, 443))
-    #
-    # Configs().set('certs_folder', './ssl/')
-    #
-    # userID, historyCount, testID = 'j7kbxk1dt', 9, 0
-    #
-    # analyzerURL = 'https://34.28.122.46:56566/Results'
-    # args = {
-    #     'command': 'getMeasurements',
-    #     'userID': userID, 'historyCount': historyCount, 'testID': testID,
-    #     'measurementType': 'initialRTT', 'kwargs': str(dict())
-    # }
-    # # sending get request and saving the response as response object
-    # r = requests.get(url=analyzerURL, params=args, verify='{}/ca.crt'.format(Configs().get('certs_folder')))
-    #
-    # # extracting data in json format
-    # print(r.json())
 
 
 
