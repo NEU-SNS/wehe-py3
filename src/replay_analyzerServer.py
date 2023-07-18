@@ -742,7 +742,7 @@ class Results(tornado.web.RequestHandler):
         pool.apply_async(postHandler, (args,), callback=self._callback)
 
     def _callback(self, response):
-        LOG_ACTION(logger, '_callback:' + str(response))
+        LOG_ACTION(logger, '_callback:' + str(response)[:1000])#to avoid having very long strings printed in logs.
         self.write(response)
         self.finish()
 
