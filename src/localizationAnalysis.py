@@ -64,13 +64,24 @@ def compute_xput_stats(xputs):
     return max(xputs), min(xputs), np.average(xputs), np.median(xputs), np.std(xputs)
 
 
-# TODO: re-visit the range of interval size to look at [30RTT - 50RTT]
+# TODO: re-visit the range of interval size to look at [10RTT - 50RTT]
 def get_interval_sizes(min_rtt, duration, mult_start=10, mult_end=50, min_nb_intervals=30):
     interval_sizes = []
     for i in np.arange(mult_start, mult_end + 1, 1):
         if (duration / (min_rtt * i)) >= min_nb_intervals:
             interval_sizes.append(round(min_rtt * i, 3))
     return interval_sizes
+
+
+def concat_non_lossy_intervals(perf):
+    perf['index'], perf['lossy'] = perf.index.values, (perf.perf_p1 > 0) | (perf.perf_p2 > 0)
+    lossy_df, non_lossy_df = perf[perf['lossy']].copy(), perf[~perf['lossy']].copy()
+
+    non_lossy_df['index_diff'] = non_lossy_df['index'].diff().replace(math.nan, 2)
+    non_lossy_df = non_lossy_df[non_lossy_df['index_diff'] > 1].copy()
+
+    perf = pd.concat([non_lossy_df, lossy_df]).sort_values(by='interval')
+    return perf.reset_index(drop=True).drop(columns=['index_diff', 'index', 'lossy'])
 
 
 def compute_perf_correlation(pair_perf, interval_size):
@@ -120,15 +131,13 @@ def detect_correlated_loss(userID, historyCount, testID, secondServerIP, results
 
     # step 3: for each interval size: compute loss ratios + apply spearman corr ratio
     loss_perfs = [LossPerf(pkts_df, 0, duration) for pkts_df in loss_dfs]
-    loss_pair_perf = PathPairPerf(
-        loss_perfs, filter_f=(lambda perfs: perfs[(perfs.perf_p1 > 0) | (perfs.perf_p2 > 0)])
-    )
+    loss_pair_perf = PathPairPerf(loss_perfs, filter_f=concat_non_lossy_intervals)
 
     corr_funcs = []
     for interval_size in interval_sizes:
         corr_funcs.append({'cls': compute_perf_correlation,
                            'kwargs': {'pair_perf': loss_pair_perf, 'interval_size': interval_size}})
-    corr_results = execute_methods_in_parallel(corr_funcs)
+    corr_results = [x for x in execute_methods_in_parallel(corr_funcs) if not(x['corrPVal'] is np.nan)]
 
     results_as_dict = {
         'pairReplay1AvgLoss': loss_perfs[0].compute_total_perf(),
@@ -178,30 +187,32 @@ def compare_pairsum_vs_single_replay_xput(userID, historyCount, testID, secondSe
     # step 2: sum the simultaneous replay throughput
     xputs_s1, dur_s1 = xputs[0]
     xputs_s2, dur_s2 = xputs[1]
-    pair_xput_sum = [sum(x) for x in zip(xputs_s1, xputs_s2) if sum(x) > 0]
+    pair_xput_sum = [sum(x) for x in zip(xputs_s1, xputs_s2)]
 
     if single_test_xputs is None:
-        single_test_xputs, _ = [x for x in xputs[2] if x > 0]
+        single_test_xputs, _ = xputs[2]
 
     # step 3: test if the throughput sum distribution have the same mean as the single replay xput distribution
     # 1- perform a Two Sample T-Test Unequal Variance
     # 2- compute the average xput difference in pct
-    t_stats_val, p_val = ttest_ind(pair_xput_sum, single_test_xputs, equal_var=False)
-    pair_avg_xput, single_avg_xput = np.average(pair_xput_sum), np.average(single_test_xputs)
-    xput_diff_pct = (pair_avg_xput - single_avg_xput) / max(pair_avg_xput, single_avg_xput)
+    X1, X2 = [x for x in pair_xput_sum if x > 0], [x for x in single_test_xputs if x > 0]
+    t_stats_val, p_val = ttest_ind(X1, X2, equal_var=False)
+    X1_avg, X2_avg = np.average(X1), np.average(X2)
+    rel_xput_diff = abs(X1_avg - X2_avg) / max(X1_avg, X2_avg)
 
     diffs = []
-    R, N, sub = 500, min(pair_avg_xput.shape[0], single_avg_xput.shape[0]), 0.5
+    R, N, sub = 500, min(len(X1), len(X2)), 0.5
     for i in np.arange(R):
-        sub_avg_X1 = np.random.choice(pair_xput_sum, size=int(N * sub)).mean()
-        sub_avg_X2 = np.random.choice(single_test_xputs, size=int(N * sub)).mean()
-        diffs.append((sub_avg_X1 - sub_avg_X2) / max(sub_avg_X1, sub_avg_X2))
+        sub_avg_X1 = np.random.choice(X1, size=int(N * sub)).mean()
+        sub_avg_X2 = np.random.choice(X2, size=int(N * sub)).mean()
+        diffs.append(abs(sub_avg_X1 - sub_avg_X2) / max(sub_avg_X1, sub_avg_X2))
 
     xput_stats_keys = ['max', 'min', 'average', 'median', 'std']
     results_as_dict = {
-        'TStatisticsTVal': t_stats_val, 'TStatisticsPVal': p_val,
-        'avgXputDiffPct': xput_diff_pct, 'sampleAvgXputDiffPct90th': np.percentile(diffs, [90]),
-        'sampleAvgXputDiffPct95th': np.percentile(diffs, [95]), 'sampleAvgXputDiffPct99th': np.percentile(diffs, [99]),
+        'tStatTVal': t_stats_val, 'tStatPVal': p_val, 'relXputDiff': rel_xput_diff,
+        'sampleRelXputDiff90th': np.percentile(diffs, [90])[0],
+        'sampleRelXputDiff95th': np.percentile(diffs, [95])[0],
+        'sampleRelXputDiff99th': np.percentile(diffs, [99])[0],
         'pairReplay1XputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(xputs_s1))},
         'pairReplay2XputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(xputs_s2))},
         'pairReplaySumXputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(pair_xput_sum))},
@@ -298,9 +309,7 @@ class GETLocalizeResultRequestHandler(AnalyzerRequestHandler):
 
         # check if results are ready
         if not os.path.isfile(result_file):
-            LOG_ACTION(logger, 'result not ready yet, adding localize job to queue :{}, {}, {}'.format(
-                userID, historyCount, testID
-            ))
+            LOG_ACTION(logger, 'result not ready yet :{}, {}, {}'.format(userID, historyCount, testID))
             return json.dumps({'success': False, 'error': 'No result found'})
 
         replayInfo = load_replayInfo(userID, historyCount, testID, result_folder)
@@ -316,10 +325,11 @@ class GETLocalizeResultRequestHandler(AnalyzerRequestHandler):
         if 'pairsum_vs_single_xput' in locTests.keys():
             stats = locTests['pairsum_vs_single_xput']
             response['pairsum_vs_single_xput'] = {
-                'area_test': stats['avgXputDiffPct'], 'ks2_ratio_test': stats['KSAcceptRatio'],
-                'xput_avg_pairsum': stats['pairReplaySumXputStats']['average'],
-                'xput_avg_single': stats['singleReplayXputStats']['average'],
-                'ks2dVal': stats['KSDVal'], 'ks2pVal': stats['KSPVal']
+                'tStatTVal': stats['tStatTVal'], 'tStatPVal': stats['tStatPVal'],
+                'relXputDiff': stats['relXputDiff'],
+                'sampleRelXputDiff90th': stats['sampleRelXputDiff90th'],
+                'sampleRelXputDiff95th': stats['sampleRelXputDiff95th'],
+                'sampleRelXputDiff99th': stats['sampleRelXputDiff99th']
             }
 
         if 'loss_correlation' in locTests.keys():
