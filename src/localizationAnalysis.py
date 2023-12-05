@@ -30,7 +30,7 @@ from python_lib import *
 from measurementAnalysis import *
 
 elogger = logging.getLogger('errorLogger')
-loc_logger = logging.getLogger('localization_analysis')
+logger = logging.getLogger('replay_analyzer')
 
 
 # This part implements helper method to exchange measurement between servers
