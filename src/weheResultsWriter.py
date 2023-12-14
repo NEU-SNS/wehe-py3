@@ -22,7 +22,7 @@ limitations under the License.
 from python_lib import *
 
 from google.cloud import bigquery
-import json, ast
+import json, ast, shutil
 
 
 def convert_data_to_dict(schema, data):
@@ -155,6 +155,19 @@ Decisions_SCHEMA = [
     bigquery.SchemaField("KSPVal", "FLOAT", description="P value of the KS test"),
 ]
 
+LocalizeDecisions_DATATYPE = 'localizeDecisions1'
+LocalizeDecisions_SCHEMA = [
+    bigquery.SchemaField("userID", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("simReplayHistoryCounts", "INTEGER", mode="REPEATED",
+                         description="historyCount values of simultaneous replays"),
+    bigquery.SchemaField("testID", "STRING", mode="REQUIRED",
+                         description="Replay type (0 for original and 1 for bit-inverted replay)"),
+    bigquery.SchemaField("localizeTestsList", "STRING", mode="REPEATED",
+                         description="list of applied tests to localize traffic differentiation"),
+    bigquery.SchemaField("localizeTestsResults", "JSON",
+                         description="the output of tests in localizeTestsList"),
+]
+
 
 def get_datatype_results_folder(datatype):
     results_folder = os.path.join(Configs().get('mainPath'), datatype, time.strftime("%Y/%m/%d", time.gmtime()))
@@ -179,6 +192,12 @@ def create_decisions_schema():
     schemaFile = os.path.join(Configs().get('bqSchemaFolder'), '{}.json'.format(Decisions_DATATYPE))
     with open(schemaFile, 'w') as f:
         f.write(json.dumps([field.to_api_repr() for field in Decisions_SCHEMA]))
+
+
+def create_localizeDecisions_schema():
+    schemaFile = os.path.join(Configs().get('bqSchemaFolder'), '{}.json'.format(LocalizeDecisions_DATATYPE))
+    with open(schemaFile, 'w') as f:
+        f.write(json.dumps([field.to_api_repr() for field in LocalizeDecisions_SCHEMA]))
 
 
 # Copy files from temporary to permanent directory
@@ -235,4 +254,15 @@ def move_result_file(userID, historyCount, testID):
 
     with open(permDecisionsFile, 'w') as f:
         f.write(json.dumps(results_key_value))
+
+
+def move_localize_result_file(userID, historyCounts, testID):
+    tmpDecisionsFile = '{}/{}/localizeDecisions/localizeResults_{}_{}-{}_{}.json'.format(
+        getCurrentResultsFolder(), userID, userID, *historyCounts, testID
+    )
+    permDecisionsFile = '{}/localizeResults_{}_{}-{}_{}.json'.format(
+        get_datatype_results_folder(LocalizeDecisions_DATATYPE), userID.replace('@', ''), *historyCounts, testID
+    )
+    shutil.copyfile(tmpDecisionsFile, permDecisionsFile)
+
 

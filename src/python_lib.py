@@ -20,7 +20,7 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib, scapy.all, ipaddress
+    random, string, logging.handlers, socket, psutil, hashlib, ipaddress, datetime
 
 import multiprocessing, threading, logging, sys, traceback
 
@@ -881,3 +881,25 @@ def get_anonymizedIP(ip):
         anonymizedIP = ip
 
     return anonymizedIP
+
+
+#####################################
+##### ADDED BY Zeinab FROM HERE #####
+#####################################
+class AnalyzerRequestHandler:
+
+    @staticmethod
+    def getCommandStr(): return None
+
+    @staticmethod
+    def handleRequest(args): return None
+
+
+# moved from replay_analyzerServer.py
+class myJsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            obj = obj.isoformat()
+        else:
+            obj = super(myJsonEncoder, self).default(obj)
+        return obj
