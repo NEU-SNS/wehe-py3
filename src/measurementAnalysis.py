@@ -120,6 +120,11 @@ def get_minRttAndDuration_from_pcap(pcap_file, server_port):
     return {'minRtt': pkt_df.rtt.min(), 'duration': pkt_df.time.max()}
 
 
+def compute_loss_vs_nonloss_sum(vals):
+    total_sum, loss_sum = vals['length_x'].iat[0], vals['length_y'].sum()
+    return loss_sum, total_sum - loss_sum
+
+
 def get_lossEvents_from_pcap(pcap_file, server_port):
     # get the pkts sent by the server
     fields = {
@@ -130,12 +135,34 @@ def get_lossEvents_from_pcap(pcap_file, server_port):
     pkt_filter = "tcp.srcport=={}".format(server_port)
     pkts_df = pcap_to_df(pcap_file, fields.keys(), pkt_filter=pkt_filter).rename(columns=fields)
 
-    # find packets that were lost
-    retransmitted_pkts = pkts_df[
-        (pkts_df.is_retransmission == 1) | (pkts_df.is_out_of_order == 1)
-        ].drop_duplicates(subset='seq', keep="last")
-    pkts_df['is_lost'] = pkts_df['seq'].isin(retransmitted_pkts.seq.values)
-    pkts_df.loc[retransmitted_pkts.index, ['is_lost']] = False
+    pkts_df['is_lost'] = False
+    pkts_df['next_seq'] = pkts_df['seq'] + pkts_df['length']
+
+    # find retransmitted packets
+    retransmitted_pkts = pkts_df[(pkts_df.is_retransmission == 1) | (pkts_df.is_out_of_order == 1)].drop_duplicates(
+        subset='seq', keep="last")
+
+    # find packets that were re-transmitted and compute non/lost bytes sum
+    lost_pkts = pd.merge(pkts_df, retransmitted_pkts, how='cross')
+    lost_pkts = lost_pkts[
+        (lost_pkts['seq_y'] >= lost_pkts['seq_x']) &
+        (lost_pkts['seq_y'] < lost_pkts['next_seq_x']) &
+        (lost_pkts['time_x'] < lost_pkts['time_y'])]
+    lost_pkts = lost_pkts.drop_duplicates(subset='time_y', keep="last")
+
+    lost_pkts = lost_pkts.groupby(['time_x', 'seq_x']).apply(compute_loss_vs_nonloss_sum).reset_index(name='loss')
+    lost_pkts[['loss_sum', 'nonloss_sum']] = lost_pkts['loss'].apply(pd.Series)
+
+    labeled_sent_pkts = pd.concat([
+        pd.DataFrame({'time': lost_pkts['time_x'], 'seq': lost_pkts['seq_x'], 'length': lost_pkts['loss_sum'], 'is_lost': True}),
+        pd.DataFrame({'time': lost_pkts['time_x'], 'seq': lost_pkts['seq_x'], 'length': lost_pkts['nonloss_sum'],'is_lost': False})
+    ])
+
+    # label loss in the original sent_pkts dataframe
+    pkts_df = pd.merge(pkts_df, labeled_sent_pkts, how='outer', on=['time', 'seq'])
+    pkts_df['is_lost'] = pkts_df['is_lost_y'].fillna(False) & pkts_df['is_lost_y']
+    pkts_df['length_y'] = pkts_df['length_y'].fillna(1e10)
+    pkts_df['length'] = pkts_df[['length_x', 'length_y']].min(axis=1)
 
     return pd.DataFrame({'timestamp': pkts_df.time, 'pkt_len': pkts_df.length, 'is_lost': pkts_df.is_lost})
 
