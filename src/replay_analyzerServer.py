@@ -40,6 +40,7 @@ from enum import Enum
 import finalAnalysis as FA
 import localizationAnalysis as LA
 import measurementAnalysis as measurementAnalysis
+import topologyFinder as topoFinder
 import weheResultsWriter as bqResultWriter
 
 POSTq = gevent.queue.Queue()
@@ -625,9 +626,11 @@ def loadAndReturnResult(userID, historyCount, testID):
 
 
 class RequestCommandType(Enum):
+    FIND_TOPOLOGY = topoFinder.GetServersAnalyzerRequestHandler
     GET_MEASUREMENTS = measurementAnalysis.GetMeasurementsRequestHandler
     LOCALIZE = LA.PostLocalizeRequestHandler
     GET_LOCALIZE_RESULTS = LA.GETLocalizeResultRequestHandler
+
 
 def getHandler(args):
     '''
@@ -737,7 +740,10 @@ class Results(tornado.web.RequestHandler):
     def get(self):
         pool = self.application.settings.get('GETpool')
         args = self.request.arguments
+        # used by localizationAnalysis.py
         args['host'] = urlparse("%s://%s" % (self.request.protocol, self.request.host)).hostname
+        # used by topologyFinder.py
+        args['clientIP'] = [bytes(self.request.remote_ip, 'ascii')]
         LOG_ACTION(logger, 'GET:' + str(args))
         pool.apply_async(getHandler, (args,), callback=self._callback)
 
@@ -887,6 +893,8 @@ def main():
     configs.set('bqSchemaFolder', '/var/spool/datatypes')
     configs.set('logsPath', '/tmp/')
     configs.set('analyzerLog', 'analyzerLog.log')
+    configs.set('toposDb', 'https://statistics.measurementlab.net/wehe/v0')
+    configs.set('tmpCacheFolder', '/tmp/cache/')
     configs.read_args(sys.argv)
     configs.check_for(['analyzerPort'])
 
@@ -907,6 +915,9 @@ def main():
     # getPacketMetaInfo()
 
     LOG_ACTION(logger, 'Starting server. Configs: ' + str(configs), doPrint=False)
+
+    # Run the processes responsible for downloading topologies from GCS
+    gevent.Greenlet.spawn(topoFinder.runScheduledYTopologiesDownload)
 
     # Run the processes responsible for the localization test
     gevent.Greenlet.spawn(LA.runLocalizationTestsProcessor)
