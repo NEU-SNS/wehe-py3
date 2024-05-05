@@ -6,7 +6,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --yes \
 
 RUN pip3 install timezonefinder future gevent matplotlib multiprocessing_logging "mysqlclient<2.1.1" \
   netaddr prometheus_client psutil reverse-geocode reverse-geocoder \
-  "tornado<6.0.0" "urllib3<2.0" google-cloud-bigquery requests pandas
+  "tornado<6.0.0" "urllib3<2.0" google-cloud-bigquery requests pandas bs4 lxml
 
 # Allow user nobody to execute tcpdump, and add CAP_NET_RAW capability to the
 # tcpdump binary.

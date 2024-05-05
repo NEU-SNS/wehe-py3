@@ -20,8 +20,9 @@ limitations under the License.
 '''
 
 import sys, os, configparser, math, json, time, subprocess, \
-    random, string, logging.handlers, socket, psutil, hashlib, ipaddress, datetime
-
+    random, string, logging.handlers, socket, psutil, hashlib, \
+    ipaddress, datetime, urllib.parse
+import pandas as pd
 import multiprocessing, threading, logging, sys, traceback
 
 
@@ -903,3 +904,28 @@ class myJsonEncoder(json.JSONEncoder):
         else:
             obj = super(myJsonEncoder, self).default(obj)
         return obj
+
+
+def html_table_to_df(table):
+    table_header, table_data = [], []
+
+    for row in table.find_all('tr'):
+        # check if row contains header
+        hcols = row.find_all('th')
+        if hcols:
+            table_header = [ele.text for ele in hcols if 'colspan' not in ele.attrs]
+            continue
+
+        # check if row contains data
+        bcols = row.find_all('td')
+        if bcols:
+            table_data.append([ele.text.strip() for ele in bcols if ele])
+
+    return pd.DataFrame(table_data, columns=table_header)
+
+
+def get_domain_from_url(url):
+    try:
+        return urllib.parse.urlparse(url).netloc
+    except:
+        return None
