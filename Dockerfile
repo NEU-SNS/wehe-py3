@@ -13,9 +13,9 @@ RUN pip3 install timezonefinder future gevent matplotlib multiprocessing_logging
 RUN chgrp tcpdump /usr/sbin/tcpdump && adduser nobody tcpdump
 RUN setcap cap_net_raw=ep /usr/sbin/tcpdump
 
-ADD src /wehe
 ADD replayTraces /replayTraces
 ADD uuid_prefix_tag.txt /uuid_prefix_tag.txt
+ADD src /wehe
 WORKDIR /wehe
 # You must provide a local hostname argument when you start this image, as well
 # as the net interface to listen on.

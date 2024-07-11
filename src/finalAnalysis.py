@@ -89,7 +89,7 @@ def finalAnalyzer(userID, historyCount, testID, path, alpha, side="Client"):
         (xputO, durO) = json.load(open(fileOriginal[0], 'r'))
         (xputR, durR) = json.load(open(fileRandom[0], 'r'))
     except Exception as e:
-        elogger.error('FAIL at loading the client xputs {} {} {}', userID, historyCount, testID)
+        elogger.error('FAIL at loading the client xputs {} {} {}: {}', userID, historyCount, testID, e)
         return None
 
     try:
@@ -100,7 +100,7 @@ def finalAnalyzer(userID, historyCount, testID, path, alpha, side="Client"):
         # Only use none-zero throughputs for test
         forPlot, results = testIt(xputO, xputR, resultFile, alpha)
     except Exception as e:
-        elogger.error('FAIL at testing the result for {} {} {}'.format(userID, historyCount, testID))
+        elogger.error('FAIL at testing the result for {} {} {}: {}'.format(userID, historyCount, testID, e))
         return None
 
     resultObj = ResultObj(realID, historyCount, testID, replayName, extraString, incomingTime)
