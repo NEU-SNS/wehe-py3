@@ -24,7 +24,6 @@ RUN git clone $REPO_URL \
     && mv wehe-py3/src /wehe \
     && mv wehe-py3/uuid_prefix_tag.txt /uuid_prefix_tag.txt \
     && rm -rf wehe-py3
-ADD ssl /wehe/ssl
  
 #ADD replayTraces /replayTraces
 #ADD uuid_prefix_tag.txt /uuid_prefix_tag.txt
