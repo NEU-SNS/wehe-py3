@@ -28,6 +28,8 @@
 /replayTraces/GoogleMeetRandom_05062024
 /replayTraces/GoogleMeet_04282020
 /replayTraces/GoogleMeet_05062024
+/replayTraces/HBOMaxRandom_05152024
+/replayTraces/HBOMax_05152024
 /replayTraces/HuluRandom_04112019
 /replayTraces/HuluRandom_06052024
 /replayTraces/Hulu_04112019
@@ -46,7 +48,9 @@
 /replayTraces/NBCSportsRandom_02272024
 /replayTraces/NBCSports_01042019
 /replayTraces/NBCSports_02272024
+/replayTraces/NetflixRandom_06072024
 /replayTraces/NetflixRandom_12122018
+/replayTraces/Netflix_06072024
 /replayTraces/Netflix_12122018
 /replayTraces/OCSRandom_08012019
 /replayTraces/OCS_08012019
