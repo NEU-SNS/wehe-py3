@@ -1892,6 +1892,7 @@ def run(*args):
     bqResultWriter.create_replayInfo_schema()
     bqResultWriter.create_clientXputs_schema()
     bqResultWriter.create_decisions_schema()
+    bqResultWriter.create_localizeDecisions_schema()
 
     if configs.get('iperf'):
         LOG_ACTION(logger, 'Starting iperf server')

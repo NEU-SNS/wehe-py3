@@ -30,12 +30,17 @@ import gevent.monkey
 
 gevent.monkey.patch_all(ssl=False)
 import ssl
-import gevent, gevent.pool, gevent.server, gevent.queue, gevent.select
+from urllib.parse import urlparse
+import gevent, gevent.pool, gevent.server, gevent.queue, gevent.select, gevent.os
 from gevent.lock import RLock
 from python_lib import *
 from prometheus_client import start_http_server, Counter
+from enum import Enum
 
 import finalAnalysis as FA
+import localizationAnalysis as LA
+import measurementAnalysis as measurementAnalysis
+import topologyFinder as topoFinder
 import weheResultsWriter as bqResultWriter
 
 POSTq = gevent.queue.Queue()
@@ -620,6 +625,13 @@ def loadAndReturnResult(userID, historyCount, testID):
             return json.dumps({'success': False, 'error': 'No result found'})
 
 
+class RequestCommandType(Enum):
+    FIND_TOPOLOGY = topoFinder.GetServersAnalyzerRequestHandler
+    GET_MEASUREMENTS = measurementAnalysis.GetMeasurementsRequestHandler
+    LOCALIZE = LA.PostLocalizeRequestHandler
+    GET_LOCALIZE_RESULTS = LA.GETLocalizeResultRequestHandler
+
+
 def getHandler(args):
     '''
     Handles GET requests.
@@ -638,6 +650,11 @@ def getHandler(args):
         RESULT_REQUEST.labels('nocommand').inc()
         return json.dumps({'success': False, 'error': 'command not provided'})
 
+    for command_type in RequestCommandType:
+        if command == command_type.value.getCommandStr():
+            return command_type.value.handleRequest(args)
+
+    # TODO: refactor next code so that each is handled by separate handler class
     try:
         userID = args['userID'][0].decode('ascii', 'ignore')
     except KeyError as e:
@@ -691,6 +708,11 @@ def postHandler(args):
     except:
         return json.dumps({'success': False, 'error': 'command not provided'})
 
+    for command_type in RequestCommandType:
+        if command == command_type.value.getCommandStr():
+            return command_type.value.handleRequest(args)
+
+    # TODO: refactor next code so that each is handled by separate handler class
     try:
         userID = args['userID'][0].decode('ascii', 'ignore')
         historyCount = int(args['historyCount'][0].decode('ascii', 'ignore'))
@@ -718,6 +740,10 @@ class Results(tornado.web.RequestHandler):
     def get(self):
         pool = self.application.settings.get('GETpool')
         args = self.request.arguments
+        # used by localizationAnalysis.py
+        args['host'] = urlparse("%s://%s" % (self.request.protocol, self.request.host)).hostname
+        # used by topologyFinder.py
+        args['clientIP'] = [bytes(self.request.remote_ip, 'ascii')]
         LOG_ACTION(logger, 'GET:' + str(args))
         pool.apply_async(getHandler, (args,), callback=self._callback)
 
@@ -725,6 +751,7 @@ class Results(tornado.web.RequestHandler):
     def post(self):
         pool = self.application.settings.get('POSTpool')
         args = self.request.arguments
+        args['host'] = urlparse("%s://%s" % (self.request.protocol, self.request.host)).hostname
         LOG_ACTION(logger, 'POST:' + str(args))
         pool.apply_async(postHandler, (args,), callback=self._callback)
 
@@ -866,6 +893,8 @@ def main():
     configs.set('bqSchemaFolder', '/var/spool/datatypes')
     configs.set('logsPath', '/tmp/')
     configs.set('analyzerLog', 'analyzerLog.log')
+    configs.set('toposDb', 'https://statistics.measurementlab.net/wehe/v0')
+    configs.set('tmpCacheFolder', '/tmp/cache/')
     configs.read_args(sys.argv)
     configs.check_for(['analyzerPort'])
 
@@ -887,8 +916,14 @@ def main():
 
     LOG_ACTION(logger, 'Starting server. Configs: ' + str(configs), doPrint=False)
 
-    gevent.Greenlet.spawn(error_logger, Configs().get('errorsLog'))
+    # Run the processes responsible for downloading topologies from GCS
+    gevent.Greenlet.spawn(topoFinder.runScheduledYTopologiesDownload)
 
+    # Run the processes responsible for the localization test
+    gevent.Greenlet.spawn(LA.runLocalizationTestsProcessor)
+
+    # Run the processes responsible for the original Wehe xput tests
+    gevent.Greenlet.spawn(error_logger, Configs().get('errorsLog'))
     g = gevent.Greenlet.spawn(jobDispatcher, POSTq)
 
     g.start()
