@@ -36,7 +36,7 @@ docker build . -t wehe
 Then run with:
 
 ```bash
-docker run -v {local absolute path}/var:/var -v {local absolute path}/tmp:/tmp --net=host --env SUDO_UID=$UID -itd wehe {the public IP address/ hostname}
+docker run -v <local_absolute_path_to_ssl_keys_directory>:/wehe/ssl --net=host --env SUDO_UID=$UID -itd wehe <public_IP_address/hostname>
 ```
 
 /data is where the results are saved. Remove `d` from `-itd` to run outside of

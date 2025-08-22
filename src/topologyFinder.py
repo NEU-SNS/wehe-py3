@@ -160,6 +160,8 @@ def find_whois_annotations(ip_addr):
 def annotate_traceroute(traceroute, ixps_dataset):
     is_valid, has_changed = True, False
     for hop in traceroute:
+        if hop['missing_network'] in ('true', 'false'):
+            hop['missing_network'] = hop['missing_network'] == 'true'
         if hop['missing_network']:
             is_annotated, cidr, asn, asname = check_if_ixp(hop['hop_addr'], ixps_dataset)
             if not is_annotated:
@@ -197,7 +199,7 @@ def get_HE_as_upstreams(asn):
         return {'upstreams4': {}, 'upstreams6': {}}
 
 
-def downlaod_CAIDA_as_relationships(dir):
+def download_CAIDA_as_relationships(dir):
     as_upstreams_file = os.path.join(dir, 'CAIDA_as_upstreams.csv')
     if not os.path.exists(as_upstreams_file):
         try:
@@ -216,7 +218,8 @@ def downlaod_CAIDA_as_relationships(dir):
 
             upstreams_df.to_csv(as_upstreams_file, index=None)
             os.remove(temp_file)
-        except:
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
             return None
     return pd.read_csv(as_upstreams_file)
 
@@ -225,8 +228,11 @@ def get_CAIDA_as_upstreams(asn, upstreams_df):
     upstreams = {}
     upstreams_asns = upstreams_df[(upstreams_df['asn'] == int(asn)) | (upstreams_df['asn'] == str(asn))]['upstream'].values
     for upstream_asn in upstreams_asns:
-        data = requests.get(f'https://api.bgpview.io/asn/{upstream_asn}').json()['data']
-        upstreams[str(upstream_asn)] = {"asn": data['asn'], "name": data['description_short']}
+        try:
+            data = requests.get(f'https://api.bgpview.io/asn/{upstream_asn}').json()['data']
+            upstreams[str(upstream_asn)] = {"asn": data['asn'], "name": data['description_short']}
+        except:
+            continue
     return {'upstreams4': upstreams, 'upstreams6': upstreams}
 
 
@@ -263,28 +269,28 @@ def check_upstream_info(client_info, traceroute, as_upstreams):
 
 
 ######################### Methods for downloading and processing the topologies #######################
-def getYTopologiesGCSUrls():
-    ytopos_urls = {}
-
-    date = time.strftime("%Y-%m-%d", time.gmtime())
-    bucket_url = Configs().get('toposDb')
-    r = requests.get(bucket_url)
-
+def getYTopologiesGCSUrls(date):
+    ytopos_urls = {}   
+    bucket_root = Configs().get('toposDb')
+    bucket_prefix = f"{Configs().get('topologiesPrefix')}{date}/"
+    r = requests.get(bucket_root, params={"prefix": bucket_prefix, "delimiter": "/"})
+    
+    LOG_ACTION(logger, f'topologies: {r.text}')
     if r.status_code == 200:
         content = bs4.BeautifulSoup(r.text, "xml")
         for key in content.find_all("Key"):
-            subnet = re.search(r"{}/ytopologies-(.*)-(.*)-.*.json".format(date), key.getText())
+            subnet = re.search(rf"{re.escape(bucket_prefix)}ytopologies-(.*?)-(.*?)-.*\.json$", key.getText())
             if subnet:
-                ytopos_urls['/'.join(subnet.groups())] = urllib.parse.urljoin(bucket_url, key.getText())
+                ytopos_urls['/'.join(subnet.groups())] = urllib.parse.urljoin(bucket_root, key.getText())
     return ytopos_urls
 
 
-def recheck_topology(topo, client_as_upstreams, ixps_dataset):
+def recheck_topology(topo, client_as_upstreams, ixps_dataset, client_info):
     # first check if the traceroutes are valid and if they have changed
     trs_valid, trs_changed = True, False
     for traceroute in topo['traceroutes'].values():
         all_hops_annotated, tr_changed = annotate_traceroute(traceroute, ixps_dataset)
-        correct_upstream = check_upstream_info(topo['client'], traceroute, client_as_upstreams)
+        correct_upstream = check_upstream_info(client_info, traceroute, client_as_upstreams)
         trs_valid = trs_valid and (all_hops_annotated and correct_upstream)
         trs_changed = trs_changed or tr_changed
 
@@ -293,8 +299,7 @@ def recheck_topology(topo, client_as_upstreams, ixps_dataset):
         asns_dfs = []
         for traceroute in topo['traceroutes'].values():
             tr_df = pd.DataFrame(traceroute)
-            tr_df = tr_df[tr_df['hop_ASN'] != topo['client']['ASN']]
-
+            tr_df = tr_df[tr_df['hop_ASN'] != client_info['ASN']]
             asns_df = tr_df.groupby(['hop_ASN', 'hop_ASName'])['offset'].agg(min).reset_index()
             asns_df['offset'] = asns_df.apply(lambda row: asns_df.shape[0] - row.name, axis=1)
             asns_dfs.append(asns_df)
@@ -317,23 +322,24 @@ def downloadYTopologiesPerSubnet(gcs_url, local_file, kwargs):
         ip_version = ipaddress.ip_network(data['subnet']).version
         as_upstreams = get_as_upstreams(
             data['ASN'], kwargs['upstreams-dir'], kwargs['caida-upstreams-df'])[f'upstreams{ip_version}']
-
-        data['topos'] = [topo for topo in data['topos'] if recheck_topology(topo, as_upstreams, kwargs['ixps_dataset'])]
-
+        
+        client_info = {'ASN': data['ASN'], 'subnet': data['subnet']}
+        data['topos'] = [topo for topo in data['topos'] if recheck_topology(topo, as_upstreams, kwargs['ixps_dataset'], client_info)]
         if len(data['topos']) > 0:
             with open(local_file, 'w') as jsonfile:
                 json.dump(data, jsonfile)
-    except:
+    except Exception as e:
+        print("Error downloading Y-topologies for url: ", gcs_url, ": ", e)
         pass
 
 
-def downloadYTopologies():
+def downloadYTopologies(date):
     # check if the json files are available in GCS and wait until they are available
-    ytopos_urls = getYTopologiesGCSUrls()
+    ytopos_urls = getYTopologiesGCSUrls(date)
     while len(ytopos_urls) == 0:
         LOG_ACTION(logger, 'topologies are still not available.')
         gevent.sleep(60)
-        ytopos_urls = getYTopologiesGCSUrls()
+        ytopos_urls = getYTopologiesGCSUrls(date)
 
     # prepare the cache directory (make sure to remove the old versions)
     topo_cache = os.path.join(Configs().get('tmpCacheFolder'), 'ytopologies')
@@ -354,7 +360,7 @@ def downloadYTopologies():
     # upstreams info
     upstreams_cache = os.path.join(datasets_cache, 'as-upstreams-info')
     os.makedirs(upstreams_cache, exist_ok=True)
-    upstreams_df = downlaod_CAIDA_as_relationships(upstreams_cache)
+    upstreams_df = download_CAIDA_as_relationships(upstreams_cache)
 
     kwargs = {'upstreams-dir': upstreams_cache, 'caida-upstreams-df': upstreams_df, 'ixps_dataset': ixps_dataset}
 
@@ -366,20 +372,40 @@ def downloadYTopologies():
 
 
 def runScheduledYTopologiesDownload():
-    download_time = datetime.time(hour=12, minute=0, second=0)
+    LOG_ACTION(logger, "scheduling download")
+    download_time = datetime.time(hour=0, minute=30, second=0)
     while True:
-        downloadYTopologies()
-
+        date = time.strftime("%Y-%m-%d", time.gmtime())
+        downloadYTopologies(date)
+        
         curr_time = datetime.datetime.now()
         next_time = datetime.datetime.combine(datetime.datetime.today() + datetime.timedelta(days=1), download_time)
         time_interval = (next_time-curr_time).total_seconds()
         LOG_ACTION(logger, 'Next download scheduled on {}, which is in {}sec.'.format(next_time, time_interval))
 
         gevent.sleep(time_interval)
+
+        
+def computeServerPairs(ytopologies):
+    server_site_pairs, server_ip_pairs = set(), set()
+    
+    for topo in ytopologies['topos']:
+        networks = ' or '.join(set(
+            [common_as['hop_ASName'] for common_as in topo['common_outside_ases']] + [ytopologies['ASName']]))
+
+        if topo['servers']['s1']['mlab_site'] and topo['servers']['s2']['mlab_site']:
+            server_site_pairs.add((
+                topo['servers']['s1']['mlab_site'], topo['servers']['s2']['mlab_site'], networks))
+
+        if topo['servers']['s1']['IP'] and topo['servers']['s2']['IP']:
+            server_ip_pairs.add((
+                topo['servers']['s1']['IP'], topo['servers']['s2']['IP'], networks))
+    return list(server_site_pairs), list(server_ip_pairs)
+    
 #######################################################################################################
 
 
-def get_topology_filepath(ip_addr, dir):
+def getTopologyFilepath(ip_addr, dir):
     for filename in os.listdir(dir):
         subnet = '{}/{}'.format(*filename.replace('.json', '').split('-')[1:3])
         if belongs_to_network(ip_addr, subnet):
@@ -398,7 +424,8 @@ class GetServersAnalyzerRequestHandler(AnalyzerRequestHandler):
         except KeyError as e:
             return json.dumps({'success': False, 'missing': str(e)})
 
-        filepath = get_topology_filepath(clientIP, os.path.join(Configs().get('tmpCacheFolder'), 'ytopologies'))
+        filepath = getTopologyFilepath(clientIP, os.path.join(Configs().get('tmpCacheFolder'), 'ytopologies'))
+
 
         # handle case client have no y-shaped topology
         if filepath is None:
@@ -407,18 +434,7 @@ class GetServersAnalyzerRequestHandler(AnalyzerRequestHandler):
         with open(filepath) as json_file:
             ytopologies = json.load(json_file)
 
-        server_site_pairs, server_ip_pairs = set(), set()
-        for topo in ytopologies['topos']:
-            networks = ' or '.join(set(
-                [common_as['hop_ASName'] for common_as in topo['common_outside_ases']] + [ytopologies['ASName']]))
-
-            if topo['servers']['s1']['mlab_site'] and topo['servers']['s2']['mlab_site']:
-                server_site_pairs.add((
-                    topo['servers']['s1']['mlab_site'], topo['servers']['s2']['mlab_site'], networks))
-
-            if topo['servers']['s1']['IP'] and topo['servers']['s2']['IP']:
-                server_ip_pairs.add((
-                    topo['servers']['s1']['IP'], topo['servers']['s2']['IP'], networks))
+        server_site_pairs, server_ip_pairs = computeServerPairs(ytopologies)
 
         if (len(server_site_pairs) == 0) and (len(server_ip_pairs) == 0):
             return json.dumps({'success': False, 'error': 'No Y-topology found.'})

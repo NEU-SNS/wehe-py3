@@ -2,11 +2,13 @@ FROM ubuntu:20.04
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --yes \
    apt-utils gcc libc-dev libcap2-bin libmysqlclient-dev python3 python3-pip \
-   tcpdump tcpreplay tshark wireshark scapy netcat
+   tcpdump tcpreplay tshark wireshark scapy netcat apt-transport-https ca-certificates gnupg curl
 
 RUN pip3 install timezonefinder future gevent matplotlib multiprocessing_logging "mysqlclient<2.1.1" \
   netaddr prometheus_client psutil reverse-geocode reverse-geocoder \
-  "tornado<6.0.0" "urllib3<2.0" google-cloud-bigquery requests pandas bs4 lxml
+
+  "tornado<6.0.0" "urllib3<2.0" google-cloud-bigquery requests pandas bs4 lxml pytest
+
 
 # Allow user nobody to execute tcpdump, and add CAP_NET_RAW capability to the
 # tcpdump binary.

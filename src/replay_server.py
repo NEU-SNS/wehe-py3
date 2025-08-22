@@ -40,6 +40,7 @@ To kill the server:
 import gevent.monkey
 import tracemalloc
 import linecache
+import gc
 
 gevent.monkey.patch_all()
 from multiprocessing_logging import install_mp_handler
@@ -361,8 +362,13 @@ class TCPServer(object):
                 # (replayName, csp) = self.LUT['tcp'][hash(new_data_4hash)]
                 # all_clients[id]'s only key is the replayName for this client
                 replayName = list(self.all_clients[id].keys())[0]
+
+                pickle_file = self.Qs[replayName]
+                with open(pickle_file, 'br') as server_pickle:
+                    Q, _, _, _, _, _ = pickle.load(server_pickle)
+
                 # Since only one connection for each replay, the first (only) csp in the Q is the one
-                csp = list(self.Qs[replayName].keys())[0]
+                csp = list(Q["tcp"].keys())[0]
                 exceptionsReport = ''
             # The following exception handler is for checking header manipulations
             except KeyError:
@@ -433,7 +439,7 @@ class TCPServer(object):
 
         pCount = 1
 
-        for response_set in self.Qs[replayName][csp]:
+        for response_set in Q["tcp"][csp]:
             if itsGET is True:
                 '''
                  Some ISPs add/remove/modify headers (e.g. Verizon adding perma-cookies).
@@ -486,6 +492,8 @@ class TCPServer(object):
         # 4- Close connection
         connection.shutdown(gevent.socket.SHUT_RDWR)
         connection.close()
+
+        gc.collect()
 
 
 class UDPServer(object):
@@ -555,6 +563,13 @@ class UDPServer(object):
                 if id in self.all_clients:
                     idExists = True
                     replayName = list(self.all_clients[id].keys())[0]
+
+                    pickle_file = self.Qs[replayName]
+                    with open(pickle_file, "br") as server_pickle:
+                        Q, _, _, _, _, _ = pickle.load(server_pickle)
+
+                    if not Configs().get('original_ips'):
+                        packets, _ = merge_servers(Q['udp'])
                 else:
                     idExists = False
 
@@ -563,8 +578,8 @@ class UDPServer(object):
                     return
 
                 else:
-                    original_serverPort = list(self.Qs[replayName].keys())[0]
-                    original_clientPort = list(self.Qs[replayName][original_serverPort].keys())[0]
+                    original_serverPort = list(packets.keys())[0]
+                    original_clientPort = list(packets[original_serverPort].keys())[0]
             except:
                 self.errorlog_q.put((get_anonymizedIP(id), 'Unknown packet', 'UDP', str(self.instance)))
                 return
@@ -574,7 +589,7 @@ class UDPServer(object):
             self.mapping[id][clientPort] = 1
             self.ports_q.put(('port', id, replayName, clientPort))
 
-            gevent.Greenlet.spawn(self.send_Q, self.Qs[replayName][original_serverPort][original_clientPort],
+            gevent.Greenlet.spawn(self.send_Q, packets[original_serverPort][original_clientPort],
                                   time.time(), client_address, id, replayName)
 
     def send_Q(self, Q, time_origin, client_address, id, replayName):
@@ -606,6 +621,8 @@ class UDPServer(object):
 
         # 4-Let client know the end of send_Q
         self.notify_q.put((id, replayName, clientPort, 'DONE'))
+
+        gc.collect()
 
 
 class SideChannel(object):
@@ -1714,6 +1731,8 @@ def load_server_replay(folder, Qs, LUT, getLUT, allUDPservers, udpSenderCounts, 
     if not Configs().get('original_ips'):
         Qs['udp'][replayName], udpSenderCounts[replayName] = merge_servers(Q['udp'])
 
+    return replayName, pickle_file
+
 
 def update_Qs(finalLUT, finalgetLUT, allIPs, tcpIPs, Qs, LUT, getLUT):
     for replayName in Qs['tcp']:
@@ -1778,8 +1797,11 @@ def load_Qs():
         folders.append(pcap_folder)
 
     for folder in folders:
-        load_server_replay(folder, Qs, LUT, getLUT, allUDPservers, udpSenderCounts, serialize='pickle')
+        replay_name, pickle_file = load_server_replay(folder, Qs, LUT, getLUT, allUDPservers, udpSenderCounts, serialize='pickle')
         update_Qs(finalLUT, finalgetLUT, allIPs, tcpIPs, Qs, LUT, getLUT)
+        Qs["tcp"][replay_name] = pickle_file
+        Qs["udp"][replay_name] = pickle_file
+        gc.collect()
 
     return Qs, finalLUT, finalgetLUT, allUDPservers, udpSenderCounts, tcpIPs, allIPs
 

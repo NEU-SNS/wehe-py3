@@ -41,12 +41,17 @@ def cast_GETResult_object(value, type):
     return value
 
 
-def send_GETMeasurement_request(serverIP, params):
-    analyzer_port = Configs().get('analyzer_tls_port')
-    url = 'https://{}:{}/Results'.format(serverIP, analyzer_port)
-    cert_file = os.path.join(Configs().get('certs_folder'), 'ca.crt')
 
-    response = json.loads(requests.get(url=url, params=params, verify=cert_file).text)
+def send_GETMeasurement_request(serverIP, params, *, port=None, cert_file=None, session=None):
+    analyzer_port = port or Configs().get('analyzer_tls_port')
+    cert_file = cert_file or os.path.join(Configs().get('certs_folder'), 'ca.crt')
+    session = session or requests
+    url = 'https://{}:{}/Results'.format(serverIP, analyzer_port)
+    try:
+        response = json.loads(session.get(url=url, params=params, verify=cert_file).text)
+    except Exception as e:
+        elogger.error("GETMeasurement failed for serverIP {}, error: {}".format(serverIP, e))
+        return None
 
     if response['success']:
         measurements = response['measurements']
@@ -91,6 +96,10 @@ def compute_perf_correlation(pair_perf_dfs, interval_size):
         df1[df1['interval_size'] == interval_size], df2[df2['interval_size'] == interval_size],
         how='inner', on=['interval', 'interval_size'], suffixes=('_p1', '_p2')
     ))
+
+    if loss_ratios.empty:
+        return {'intervalSize': interval_size, 'corrVal': np.nan, 'corrPVal': np.nan}
+
     statistic, pvalue = scipy.stats.spearmanr(loss_ratios.perf_p1, loss_ratios.perf_p2, alternative='greater')
     return {'intervalSize': interval_size, 'corrVal': statistic, 'corrPVal': pvalue}
 
@@ -154,6 +163,11 @@ def detect_correlated_loss(userID, testID, simServers_info, resultsFolder, kwarg
     if np.any([loss_df is None for loss_df in loss_dfs]):
         elogger.error('FAILED localization test for {} {}: collecting measurements'.format(userID, *historyCounts))
         return None
+
+    elif np.any([loss_df.empty for loss_df in loss_dfs]):
+        # if there are no loss ratios, we return an empty DataFrame
+        return {'simReplaysAvgLoss': [0] * len(loss_dfs), 'spearmanCorrStats': []}
+
 
     # step 3: for each interval size: apply spearman corr ratio
     corr_funcs = []
@@ -219,6 +233,11 @@ def compare_pairsum_vs_single_replay_xput(userID, testID, simServers_info, singl
     with open(Configs().get('xputDiffThresholds'), "rb") as fp:
         T_diff = np.array(pickle.load(fp))
 
+
+    if len(xputs) < 3:
+        elogger.error('FAILED localization test for {} {} - {}: not enough samples collected'.format(userID, *historyCounts))
+        return None
+    
     xputs = [x[0] for x in xputs]
     s_xputs = xputs[0]
     psum_xputs = [sum(x) for x in zip(xputs[1], xputs[2])]
@@ -278,6 +297,12 @@ def localize(userID, testID, simServers_info, singleServer_info, kwargs, results
 LOC_Queue = gevent.queue.Queue()
 
 
+def _safe_localize(userID, testID, simServers_info, singleServer_info, kwargs, results_folder):
+    try:
+        localize(userID, testID, simServers_info, singleServer_info, kwargs, results_folder)
+    except Exception as e:
+        elogger.error("Localization failed for userID {}, testID {}: {}".format(userID, testID, e))
+
 def runLocalizationTestsProcessor():
     LOG_ACTION(logger, 'Ready to processes localization tests request')
 
@@ -285,7 +310,8 @@ def runLocalizationTestsProcessor():
     while True:
         userID, testID, simServers_info, singleServer_info, kwargs = LOC_Queue.get()
         results_folder = getCurrentResultsFolder()
-        pool.apply_async(localize, args=(userID, testID, simServers_info, singleServer_info, kwargs, results_folder))
+        pool.apply_async(_safe_localize, args=(userID, testID, simServers_info, singleServer_info, kwargs, results_folder))
+
 
 
 class PostLocalizeRequestHandler(AnalyzerRequestHandler):
