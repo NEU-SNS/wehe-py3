@@ -45,6 +45,7 @@ def pcap_to_df(pcap_path, fields, pkt_filter=None):
         output, err = p.communicate()
     except Exception as e:
         return pd.DataFrame(columns=fields)
+      
     return pd.read_csv(StringIO(output.decode('utf-8')))
 
 
@@ -119,6 +120,7 @@ def get_minRttAndDuration_from_pcap(pcap_file, server_port):
     fields = {'frame.time_relative': 'time', 'tcp.analysis.ack_rtt': 'rtt'}
     pkt_filter = "tcp.dstport=={}".format(server_port)
     pkt_df = pcap_to_df(pcap_file, fields.keys(), pkt_filter=pkt_filter).rename(columns=fields)
+
     if pkt_df.empty:
         return None
     return {'minRtt': pkt_df.rtt.min(), 'duration': pkt_df.time.max()}
@@ -145,7 +147,6 @@ def get_lossEvents_from_pcap(pcap_file, server_port):
     # find retransmitted packets
     retransmitted_pkts = pkts_df[(pkts_df.is_retransmission == 1) | (pkts_df.is_out_of_order == 1)].drop_duplicates(
         subset='seq', keep="last")
-        
     # if there are no retransmitted packets (or marked as retransmitted), return immediately
     if retransmitted_pkts.empty:
         return pd.DataFrame({'timestamp': pkts_df.time, 'pkt_len': pkts_df.length, 'is_lost': pkts_df.is_lost})
@@ -216,8 +217,10 @@ def get_measurements(measurementType, userID, historyCount, testID, kwargs, resu
 
     if measurementType == 'minRttAndDuration':
         result = get_minRttAndDuration_from_pcap(pcap_file, kwargs['serverPort'])
+        
         if result is None:
             raise ValueError("No packets found in pcap file") 
+
         return {'type': measurementType, 'resultType': str(type(result)), 'result': result}
 
     if measurementType == 'lossEvents':

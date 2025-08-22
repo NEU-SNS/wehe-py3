@@ -41,6 +41,7 @@ def cast_GETResult_object(value, type):
     return value
 
 
+
 def send_GETMeasurement_request(serverIP, params, *, port=None, cert_file=None, session=None):
     analyzer_port = port or Configs().get('analyzer_tls_port')
     cert_file = cert_file or os.path.join(Configs().get('certs_folder'), 'ca.crt')
@@ -95,8 +96,10 @@ def compute_perf_correlation(pair_perf_dfs, interval_size):
         df1[df1['interval_size'] == interval_size], df2[df2['interval_size'] == interval_size],
         how='inner', on=['interval', 'interval_size'], suffixes=('_p1', '_p2')
     ))
+
     if loss_ratios.empty:
         return {'intervalSize': interval_size, 'corrVal': np.nan, 'corrPVal': np.nan}
+
     statistic, pvalue = scipy.stats.spearmanr(loss_ratios.perf_p1, loss_ratios.perf_p2, alternative='greater')
     return {'intervalSize': interval_size, 'corrVal': statistic, 'corrPVal': pvalue}
 
@@ -160,9 +163,11 @@ def detect_correlated_loss(userID, testID, simServers_info, resultsFolder, kwarg
     if np.any([loss_df is None for loss_df in loss_dfs]):
         elogger.error('FAILED localization test for {} {}: collecting measurements'.format(userID, *historyCounts))
         return None
+
     elif np.any([loss_df.empty for loss_df in loss_dfs]):
         # if there are no loss ratios, we return an empty DataFrame
         return {'simReplaysAvgLoss': [0] * len(loss_dfs), 'spearmanCorrStats': []}
+
 
     # step 3: for each interval size: apply spearman corr ratio
     corr_funcs = []
@@ -228,6 +233,7 @@ def compare_pairsum_vs_single_replay_xput(userID, testID, simServers_info, singl
     with open(Configs().get('xputDiffThresholds'), "rb") as fp:
         T_diff = np.array(pickle.load(fp))
 
+
     if len(xputs) < 3:
         elogger.error('FAILED localization test for {} {} - {}: not enough samples collected'.format(userID, *historyCounts))
         return None
@@ -248,7 +254,7 @@ def compare_pairsum_vs_single_replay_xput(userID, testID, simServers_info, singl
 
     xput_stats_keys = ['max', 'min', 'average', 'median', 'std']
     results_as_dict = {
-        'singleRepldetect_correlated_lossayHistoryCount': singleReplay_historyCount,
+        'singleReplayHistoryCount': singleReplay_historyCount,
         'mwuVal': U_val, 'mwuPVal': p_val,
         'simReplaysXputStats': [{k: v for k, v in zip(xput_stats_keys, compute_xput_stats(vals))} for vals in xputs[1:]],
         'simReplaySumXputStats': {k: v for k, v in zip(xput_stats_keys, compute_xput_stats(psum_xputs))},
@@ -305,6 +311,7 @@ def runLocalizationTestsProcessor():
         userID, testID, simServers_info, singleServer_info, kwargs = LOC_Queue.get()
         results_folder = getCurrentResultsFolder()
         pool.apply_async(_safe_localize, args=(userID, testID, simServers_info, singleServer_info, kwargs, results_folder))
+
 
 
 class PostLocalizeRequestHandler(AnalyzerRequestHandler):

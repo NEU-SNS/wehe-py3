@@ -300,7 +300,6 @@ def recheck_topology(topo, client_as_upstreams, ixps_dataset, client_info):
         for traceroute in topo['traceroutes'].values():
             tr_df = pd.DataFrame(traceroute)
             tr_df = tr_df[tr_df['hop_ASN'] != client_info['ASN']]
-
             asns_df = tr_df.groupby(['hop_ASN', 'hop_ASName'])['offset'].agg(min).reset_index()
             asns_df['offset'] = asns_df.apply(lambda row: asns_df.shape[0] - row.name, axis=1)
             asns_dfs.append(asns_df)
@@ -323,6 +322,7 @@ def downloadYTopologiesPerSubnet(gcs_url, local_file, kwargs):
         ip_version = ipaddress.ip_network(data['subnet']).version
         as_upstreams = get_as_upstreams(
             data['ASN'], kwargs['upstreams-dir'], kwargs['caida-upstreams-df'])[f'upstreams{ip_version}']
+        
         client_info = {'ASN': data['ASN'], 'subnet': data['subnet']}
         data['topos'] = [topo for topo in data['topos'] if recheck_topology(topo, as_upstreams, kwargs['ixps_dataset'], client_info)]
         if len(data['topos']) > 0:
@@ -377,13 +377,14 @@ def runScheduledYTopologiesDownload():
     while True:
         date = time.strftime("%Y-%m-%d", time.gmtime())
         downloadYTopologies(date)
-
+        
         curr_time = datetime.datetime.now()
         next_time = datetime.datetime.combine(datetime.datetime.today() + datetime.timedelta(days=1), download_time)
         time_interval = (next_time-curr_time).total_seconds()
         LOG_ACTION(logger, 'Next download scheduled on {}, which is in {}sec.'.format(next_time, time_interval))
 
         gevent.sleep(time_interval)
+
         
 def computeServerPairs(ytopologies):
     server_site_pairs, server_ip_pairs = set(), set()
@@ -424,6 +425,7 @@ class GetServersAnalyzerRequestHandler(AnalyzerRequestHandler):
             return json.dumps({'success': False, 'missing': str(e)})
 
         filepath = getTopologyFilepath(clientIP, os.path.join(Configs().get('tmpCacheFolder'), 'ytopologies'))
+
 
         # handle case client have no y-shaped topology
         if filepath is None:
